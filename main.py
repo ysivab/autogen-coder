@@ -8,9 +8,6 @@ plan: Plan = Plan()
 plan.read_requirements("/Users/brinthan/Desktop/Web Publishing System API Requirements Document.docx")
 plan.analyze_and_plan()
 
-print("------")
-# print(plan.generated_content)
-
 design: Design = Design()
 design.cto_consultation(plan.cpo_plan, plan.product_manager_plan)
 
@@ -33,15 +30,18 @@ for cto_plan in design.cto_plan:
 for task in project_plan:
     component_name = task.get('ComponentName', '')
 
-    file_path = task.get('filePath', ['Error'])
-    if file_path is not []:
-        file_path = json.dumps(file_path)
+    files = task.get('filePath', ['Error'])
+    all_files: str = None
+    if files is not []:
+        all_files = json.dumps(files)
 
     functional_requirement = task.get('FunctionalRequirement', {})
     if functional_requirement is not {}:
         functional_requirement = json.dumps(functional_requirement)
 
-    design.architect_solution(plan.cpo_plan, file_path, component_name, functional_requirement)
+    if files is not []:
+        for file in files:
+            design.architect_solution(plan.cpo_plan, file, all_files, component_name, functional_requirement)
 
 # for requirement in plan.product_manager_plan:
 #     # component_name = requirement.get('ComponentName', {})

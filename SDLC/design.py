@@ -121,7 +121,7 @@ class Design:
             print("CTO plan is not structured properly")
 
 
-    def architect_solution(self, cpo_plan: dict, file_path: str, component_name: str, functional_requirement: str) -> None:
+    def architect_solution(self, cpo_plan: dict, file_path: str, all_files: str, component_name: str, functional_requirement: str) -> None:
         cpo_plan = json.dumps(cpo_plan)
 
         config_list=[
@@ -149,7 +149,7 @@ class Design:
             system_message = '''Solutions Architect. You are an expert software architect. You are an expert in Cloud, microservices and Python development. You analyze functional requirements thoroughly, review the <filestructure> recommendation from CTO, overall product vision from CPO.
             This application will be developed in Python.
             Write only the skeleton for each of the file based on CTO's recommendation.
-            Your output should code block with each file name.
+            Your output should be strictly just one code block.
             '''
         )
 
@@ -164,7 +164,16 @@ class Design:
             system_message='''Critic. Double check plan, claims, code from other agents and provide feedback. Solutions Architect must have considered filestructure recommended by CTO. Solutions Architect must be giving code blocks with matching file names''',
         )
 
-        groupchat = autogen.GroupChat(agents=[user_proxy, cto, critic], messages=[], max_round=5)
+        CodeReviewer = autogen.AssistantAgent(
+            name = "CodeReviewer",
+            llm_config = {
+                "model": "gpt-3.5-turbo-16k",
+                "config_list": config_list
+            },
+            system_message='''Code Reviewer. You are responsible to format the code and ensure output is separated in multiple codeblocks with filename. i.e: ```file.py```'''
+        )
+
+        groupchat = autogen.GroupChat(agents=[user_proxy, cto, critic, CodeReviewer], messages=[], max_round=5)
         manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
                 "timeout": 600,
                 "cache_seed": 42,
@@ -174,9 +183,11 @@ class Design:
 
         user_proxy.initiate_chat(
             manager,
-            message=f"""Please create skeleton for each files from recommendation from CTO as below: |||{file_path}|||. 
-            ComponentName: |||{component_name}|||
-            Chief Product Officer's plan is as below: |||{cpo_plan}|||
+            message=f"""
+            Write a high-level code for only this file |||{file_path}||| in relation to overall requirement.
+            Just for reference CTO has recommended the following files and classes: |||{all_files}|||
+            to develop the component: |||{component_name}|||
+            Chief Product Officer created the plan as below for the component: |||{cpo_plan}|||
             This is the functional requirement from product manager: |||{functional_requirement}|||
             """
         )
