@@ -3,6 +3,7 @@ import json
 
 from SDLC.plan import Plan
 from SDLC.design import Design
+from SDLC.develop import Develop
 
 plan: Plan = Plan()
 plan.read_requirements("/Users/brinthan/Desktop/Web Publishing System API Requirements Document.docx")
@@ -42,6 +43,14 @@ for task in project_plan:
     if files is not []:
         for file in files:
             design.architect_solution(plan.cpo_plan, file, all_files, component_name, functional_requirement)
+
+
+
+develop: Develop = Develop()
+develop.root_folder = '/Users/brinthan/workspace/ml-learning/autogen-coder/coding/'
+develop.source_code = design.source_code
+develop.write_code()
+
 
 # for requirement in plan.product_manager_plan:
 #     # component_name = requirement.get('ComponentName', {})

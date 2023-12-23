@@ -11,6 +11,7 @@ class Design:
         self.requirements: str = None
         self.cto_plan: dict = []
         self.pm_plan: dict = []
+        self.source_code: dict = {}
     
     
     # analyzes the high level requirement and detailed requirement to come up with technical guidance
@@ -120,6 +121,9 @@ class Design:
         else:
             print("CTO plan is not structured properly")
 
+    def _format_code(self, code):
+            code = "\n".join([line for line in code.split("\n") if len(line.strip()) > 0])
+            return code
 
     def architect_solution(self, cpo_plan: dict, file_path: str, all_files: str, component_name: str, functional_requirement: str) -> None:
         cpo_plan = json.dumps(cpo_plan)
@@ -196,7 +200,16 @@ class Design:
         for message in reversed(groupchat.messages):
             if message['name'] == 'SolutionsArchitect' and message['content'] is not None:
                 sa_message = message['content']
-                break
+                break   
 
-        print("************************************")
-        print(sa_message)
+        if sa_message != "":
+            # regex = r"```(?:json)?\s*\n?({.*?})\s*\n?```"
+            regex = r"```python\s*\n?(.*?)\n?```"
+            matches = re.finditer(regex, sa_message, re.DOTALL)
+            for match in matches:
+                code = match.group(1).strip()
+                if "CODE" in code:
+                    continue
+                self.source_code[file_path] = self._format_code(code)
+        else:
+            print("CTO plan is not structured properly")
