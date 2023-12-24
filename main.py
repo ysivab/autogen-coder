@@ -51,6 +51,7 @@ develop.root_folder = '/Users/brinthan/workspace/ml-learning/autogen-coder/codin
 develop.source_code = design.source_code
 develop.project_plan = project_plan
 develop.write_code()
+develop.code_review()
 
 
 # for requirement in plan.product_manager_plan:

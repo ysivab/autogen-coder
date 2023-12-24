@@ -36,6 +36,7 @@ class Design:
             },
             system_message = "User. Interact with the CTO to discuss the requirement. Final project break-down needs to be approved by this user.",
             code_execution_config=False,
+            human_input_mode = "NEVER",
         )
 
         # engineer = autogen.AssistantAgent(
@@ -145,6 +146,7 @@ class Design:
             },
             system_message = "User. Interact with the Project Manager to create a project plan. Final project break-down needs to be approved by this user.",
             code_execution_config=False,
+            human_input_mode = "NEVER",
         )
 
         cto = autogen.AssistantAgent(
