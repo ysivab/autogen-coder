@@ -49,6 +49,7 @@ for task in project_plan:
 develop: Develop = Develop()
 develop.root_folder = '/Users/brinthan/workspace/ml-learning/autogen-coder/coding/'
 develop.source_code = design.source_code
+develop.project_plan = project_plan
 develop.write_code()
 
 
