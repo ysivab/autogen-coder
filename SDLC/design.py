@@ -11,7 +11,7 @@ from docx import Document
 class Design:
     def __init__(self):
         self.architecture_document: str = None
-        self.pm_plan: dict = []
+        self.root_folder: str = None        
         self.source_code: dict = {}
         self.file_structure: str = None
         self.notetaker: NoteTaker = NoteTaker()
@@ -48,19 +48,18 @@ class Design:
             user_persona: dict = {
                 "name": "User",
                 "description": "This agent only responds once and then never speak again.",
-                "system_message": "User. Interact with the CTO and Software Architect to discuss the requirement. Final project break-down needs to be approved by this user.",
+                "system_message": "User. Interact with the Software Architect to discuss the requirement. Final project break-down needs to be approved by this user.",
                 "human_input_mode": "TERMINATE",
                 "task": f"""
-                Product Manager has the following high-level requirement for my application: <plan>{product_manager_plan}</plan>
+                Software Architect, I want you to determine the <task>{phase}</task> with the following constraints <constraint>{constraints}</constraints>. Do not discuss any other items.
+                Product Manager has the following high-level requirement for my application: <plan>{product_manager_plan}</plan>.
                 """
             }
             
             critic_persona: dict = {
-                "name": "ChiefTechnologyOfficer",
-                "description": "CTO critique the work done by Software Architect and provides feedback.",
-                "system_message": f'''Chief Technology Officer. You are an expert in microservice design, software development and cloud architecture.
-                You analyze functional requirements, and review the plan from Software Architect.
-                Software Architect will only be talking about {phase}
+                "name": "Critic",
+                "description": "This agent speaks after Software Architect's response. CTO critique the work done by Software Architect and provides feedback.",
+                "system_message": f'''Critic. You will review SoftwareArchitect's response and compare it with user's request. Only review {phase} and nothing more.
                 Ensure you follow this rule: {constraints}
                 Programming language to be used: {self.language}.
                 Cloud services to be used: {self.cloud_services}
@@ -70,7 +69,7 @@ class Design:
 
             expert_persona: dict = {
                 "name": "SoftwareArchitect",
-                "description": "Software Architect will have the first speaker and the last speaker in this seminar",
+                "description": "This agent is the the first speaker and the last speaker in this seminar",
                 "system_message": f'''Software Architect. You are an expert in Cloud, microservices and Python development. 
                 You analyze functional requirements thoroughly and break-down how this can be implemented in {self.language}.
                 You'll be determining {phase}
@@ -92,6 +91,11 @@ class Design:
 
         notetaker: NoteTaker = NoteTaker()
         architecture_document = notetaker.summarize("Create an architecture.md file based on these notes. DO NOT SUMMARIZE ", note_collection)
+
+        # write to disk
+        file_path = os.path.join(self.root_folder, 'architecture-design.md')
+        with open(file_path, 'w') as file:
+            file.write(architecture_document)
         
         return architecture_document
 

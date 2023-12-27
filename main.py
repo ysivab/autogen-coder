@@ -13,11 +13,12 @@ plan.analyze_and_plan()
 
 design: Design = Design()
 # design.cto_consultation(plan.product_plan)
+design.root_folder = "/Users/brinthan/workspace/ml-learning/demo/autogen"
 design.architect_solution(plan.product_plan)
 
 develop: Develop = Develop()
 develop.source_code = design.source_code
-develop.root_folder = "/Users/brinthan/workspace/demo/content-management"
+develop.root_folder = "/Users/brinthan/workspace/ml-learning/demo/autogen"
 develop.file_structure = design.file_structure
 develop.architecture_document = design.architecture_document
 develop.write_code()

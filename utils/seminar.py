@@ -21,7 +21,8 @@ class Seminar:
             },
             system_message = user_persona['system_message'],
             code_execution_config=False,
-            human_input_mode = user_persona['human_input_mode']
+            human_input_mode = user_persona['human_input_mode'],
+            max_consecutive_auto_reply = 1
         )
 
         critic = autogen.AssistantAgent(
@@ -43,8 +44,8 @@ class Seminar:
             },
             system_message = expert_persona['system_message']
         )
-
-        groupchat = autogen.GroupChat(agents=[user_proxy, expert, critic], messages=[], max_round=5, speaker_selection_method="round_robin", allow_repeat_speaker=False)
+# speaker_selection_method="round_robin", 
+        groupchat = autogen.GroupChat(agents=[user_proxy, expert, critic], messages=[], max_round=5, allow_repeat_speaker=False)
         manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
                 # "temperature": 0,
                 "config_list": self.config_list,
