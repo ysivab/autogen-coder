@@ -4,6 +4,8 @@ import json
 import re
 
 from docx import Document
+from utils.notetaker import NoteTaker
+from utils.seminar import Seminar
 
 class Develop:
     def __init__(self):
@@ -12,6 +14,8 @@ class Develop:
         self.root_folder: str = None
         self.project_plan: dict = []
         self.source_code: dict = {}
+        self.file_structure: str = None
+        self.architecture_document: str = None
 
 
     # software developer to write code to the disk
@@ -33,181 +37,184 @@ class Develop:
             file.write(code)
 
 
-    # ask software developer to review and write the code
+    # check for response and summarize
+    def _summarizer(self, seminar_notes) -> str:
+        source_code: str = None
+
+        notetaker: NoteTaker = NoteTaker()
+        summary = notetaker.summarize("Revise the initial code block from the developer and incorporate feedback from the critic. Remove any duplicate information. Rewrite the code block by including user and critic's feedback", seminar_notes)
+
+        # pattern = r"(?:\w+)?\s*\n?(.*?)\s*"
+        pattern = r"```(?:\w+)?\s*\n(.*?)\n```"
+        match = re.search(pattern, summary, re.DOTALL)
+
+        if match:
+            source_code = match.group(1).strip()
+        else:
+            source_code = "No viable code written"
+
+        return source_code
+    
+
+
+    # software development phase
+    def _development_seminar(self, file_path) -> str:
+        user_persona: dict = {
+                "name": "User",
+                "description": "This agent only responds once and then never speak again.",
+                "system_message": "User. Interact with the Software Developer to help a implement the function. Final project break-down needs to be approved by this user.",
+                "human_input_mode": "NEVER",
+                "task": f"""
+                Here's the full project structure for your reference <files>{self.file_structure}</files>. 
+                Write the full code for only this specific file <file>{file_path} only to satisfy requirement on the <document> below.
+                This is the architecture document <document>{self.architecture_document}</document>
+                Do NOT write any other classes.
+                """
+            }
+        expert_persona: dict = {
+            "name": "SoftwareDeveloper",
+            "description": "This agent will be the first speaker and the last speaker in this seminar",
+            "system_message": '''Software Developer. You are part of a group of expert Python software developers. You analyze full functional requirements thoroughly.
+            You will write the code for the specific file you've been asked to develop. Don't write any other files, only focus on your file.
+            Your output should be strictly just one code block.
+            '''
+        }
+        critic_persona: dict = {
+            "name": "Critic",
+            "description": "This agent only speaks once, and only after Software Developer to critique the work",
+            "system_message": '''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.''',
+        }
+
+        seminar: Seminar = Seminar()
+        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
+
+        # remove the initial request, no need to send that
+        seminar_notes = seminar_notes[1:]
+        seminar_conclusion = self._summarizer(seminar_notes)
+
+        print("#*#*#$()@#*$)(@*#$)(*@#)($*@)#($*)(@#$*)(@#$*)(@#*$)(#*$)")
+        print(seminar_conclusion)
+
+        return seminar_conclusion
+
+
+    # look for place holders in code and write the function again
+    def _placeholder_check(self, file_path) -> str:
+        source_code = self.source_code[file_path]
+        user_persona: dict = {
+                "name": "User",
+                "system_message": "User. Interact with the Software Developer to help a implement the function. Final project break-down needs to be approved by this user.",
+                "description": "This agent only responds once and then never speak again.",
+                "human_input_mode": "NEVER",
+                "task": f"""
+                Here's the full project structure for your reference <files>{self.file_structure}</files>. 
+                Review the entire code <code>{source_code}</code> for this file <file>{file_path}</file>.
+                You must complete the entire code by completing any placeholder code to meet the requirement for the code below as per <document>.
+                This is the architecture document <document>{self.architecture_document}</document>
+                Do NOT write any other classes.
+                """
+            }
+        expert_persona: dict = {
+            "name": "SoftwareDeveloper",
+            "description": "This agent will be the first speaker and the last speaker in this seminar",
+            "system_message": '''Software Developer. You are part of a group of expert Python software developers. You analyze full functional requirements thoroughly.
+            You will write the code for the specific file you've been asked to develop. Don't write any other files, only focus on your file.
+            Your output should be strictly just one code block.
+            '''
+        }
+        critic_persona: dict = {
+            "name": "Critic",
+            "description": "This agent only speaks once, and only after Software Developer to critique the work",
+            "system_message": '''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.''',
+        }
+
+        seminar: Seminar = Seminar()
+        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
+
+        # remove the initial request, no need to send that
+        seminar_notes = seminar_notes[1:]
+        seminar_conclusion = self._summarizer(seminar_notes)
+
+        return seminar_conclusion
+
+
+
+    # handle entire code writing 
     def write_code(self) -> None:
-        for task in self.project_plan:
-            file_path = task.get('filePath', '')
-            functional_requirement = task.get('FunctionalRequirement', {})
-            for file in file_path:
-                file_source_code = self.source_code[file]
-                config_list=[
-                    {
-                        "model": "gpt-3.5-turbo-16k",
-                        "api_key": os.environ.get("OPENAI_API_KEY")
-                    }
-                ]
+        for file_path, code in self.source_code.items():
+            seminar_notes = self._development_seminar(file_path)
 
-                user_proxy = autogen.UserProxyAgent(
-                    name = "User",
-                    llm_config={
-                        "timeout": 600,
-                        "cache_seed": 42,
-                        "model": "gpt-3.5-turbo-16k",
-                        "config_list": config_list,
-                    },
-                    system_message = "User. Interact with the Software Developer to help a implement the function. Final project break-down needs to be approved by this user.",
-                    code_execution_config=False,
-                    human_input_mode = "NEVER",
-                )
+            # if there's multiple code blocks or no code block at all, let's try development again
+            matches = re.findall(r'```', seminar_notes)
+            if len(matches) > 1 or len(matches) == 0:
+                seminar_notes = self._development_seminar(file_path)
+        
+            # self.source_code[file_path] = self._summarizer(seminar_notes)
+            self.source_code[file_path] = seminar_notes
 
-                developer = autogen.AssistantAgent(
-                    name = "SoftwareDeveloper",
-                    llm_config = config_list,
-                    system_message = '''Software Developer. You are an expert software developer in Python. You analyze functional requirements thoroughly, review the existing source code.
-                    You will write missing functions, and write any placeholders.
-                    Your output should be strictly just one code block.
-                    '''
-                )
+            # code QA run to find any placeholder and remove
+            seminar_notes =  self._placeholder_check(file_path)
+            self.source_code[file_path] = self._summarizer(seminar_notes)
 
-                critic = autogen.AssistantAgent(
-                    name="Critic",
-                    llm_config={
-                        "timeout": 600,
-                        "cache_seed": 42,
-                        "model": "gpt-3.5-turbo-16k",
-                        "config_list": config_list,
-                    },
-                    system_message='''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.''',
-                )
 
-                groupchat = autogen.GroupChat(agents=[user_proxy, developer, critic], messages=[], max_round=5)
-                manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-                        "timeout": 600,
-                        "cache_seed": 42,
-                        "model": "gpt-3.5-turbo-16k",
-                        "config_list": config_list,
-                    })
 
-                user_proxy.initiate_chat(
-                    manager,
-                    message=f"""
-                    This is the code you are going to fix: ```{file_source_code}```
-                    Purpose of this code is to implement the functionality: ```{functional_requirement}```
-                    Write the full code for this specific class only to satisfy requirement of this class.
-                    Do NOT write any other classes.
-                    """
-                )
+    # review code for integration
+    def _validate_integration(self, file_path):
+        seminar_conclusion: str = None
+        source_code = self.source_code[file_path]
+        all_code = json.dumps(self.source_code)
 
-                developer_message = None
-                for message in reversed(groupchat.messages):
-                    if message['name'] == 'SoftwareDeveloper' and message['content'] is not None:
-                        developer_message = message['content']
-                        break   
+        user_persona: dict = {
+                "name": "User",
+                "description": "This agent only responds once and then never speak again.",
+                "system_message": "User. Interact with the Software Developer to help a implement the function. Final project break-down needs to be approved by this user.",
+                "human_input_mode": "NEVER",
+                "task": f"""
+                Here's the full project source code for your reference <source_code>{all_code}</source_code>. 
+                Review the entire code <code>{source_code}</code> for this file <file>{file_path}</file>.
+                You must ensure your file is well written to integrate with rest of the application.
+                Do NOT write any other classes.
+                """
+            }
+        expert_persona: dict = {
+            "name": "SoftwareDeveloper",
+            "description": "This agent will be the first speaker and the last speaker",
+            "system_message": '''Software Developer. You are part of a group of expert Python software developers. You analyze full functional requirements thoroughly.
+            You will review and ensure your file is connected well to integrate with rest of the application. Don't write any other files, only focus on your file.
+            Your output should be strictly just one code block.
+            '''
+        }
+        critic_persona: dict = {
+            "name": "Critic",
+            "description": "This agent only speak after Software Developer and only once",
+            "system_message": '''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.''',
+        }
 
-                if developer_message != "":
-                    # regex = r"```(?:json)?\s*\n?({.*?})\s*\n?```"
-                    regex = r"```python\s*\n?(.*?)\n?```"
-                    matches = re.finditer(regex, developer_message, re.DOTALL)
-                    for match in matches:
-                        code = match.group(1).strip()
-                        if "CODE" in code:
-                            continue
-                        self.source_code[file] = code
-                else:
-                    print("Software Developer response is not structured properly")
+        seminar: Seminar = Seminar()
+        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
 
-        # write the source code to local file
+        # remove the product plan, no need to send that
+        seminar_notes = seminar_notes[1:]
+        
+        seminar_conclusion = self._summarizer(seminar_notes)
+        return seminar_conclusion
+
+    # upload all code and check if any of them require modification
+    def code_review(self) -> None:
+        for file_path, code in self.source_code.items():
+            seminar_notes = self._validate_integration(file_path)
+            
+            # if there's multiple code blocks or no code block at all, let's try development again
+            matches = re.findall(r'```', seminar_notes)
+            if len(matches) > 1 or len(matches) == 0:
+                seminar_notes = self._development_seminar(file_path)
+        
+            self.source_code[file_path] = self._summarizer(seminar_notes)
+
+
+    # save the code to local disk
+    def save_code(self) -> None:
         for file_path, code in self.source_code.items():
             self._write_code_to_disk(file_path, code)
 
 
-    # upload all code and check if any of them require modification
-    def code_review(self) -> None:
-        config_list = autogen.config_list_from_json(
-            "notebook/OAI_CONFIG_LIST",
-            filter_dict={
-                "model": ["gpt-3.5-turbo-16k"]
-            },
-        )
-
-        code_reviewer = autogen.AssistantAgent(
-            name = "CodeReviewer",
-            llm_config={
-                "temperature": 0,
-                "config_list": config_list,
-            },
-            system_message = '''Code Reviewer. You are an expert software developer and code reviewer in Python. You analyze existing source code and identify improvement opportunities.
-            You will identify missing functions to complete the application.
-            Your output should be strictly in one code block.
-            '''
-        )
-
-        # groupchat = autogen.GroupChat(agents=[user_proxy, code_reviewer], messages=[], max_round=5)
-        # manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-        #         "timeout": 600,
-        #         "cache_seed": 42,
-        #         "model": "gpt-3.5-turbo-16k",
-        #         "config_list": config_list,
-        #     })
-
-        for file_path, code in self.source_code.items():
-            str_source_code = json.dumps(self.source_code)
-
-            user_proxy = autogen.UserProxyAgent(
-                name = "User",
-                llm_config={
-                    "timeout": 600,
-                    "cache_seed": 42,
-                    "model": "gpt-3.5-turbo-16k",
-                    "config_list": config_list,
-                },
-                human_input_mode = "NEVER",
-                code_execution_config=False,
-            )
-            user_proxy.initiate_chat(
-                code_reviewer,
-                message=f"""This is the code you are going to fix: ```{file_path}```
-                 This is the entire application source code for your reference and review: ```{str_source_code}```
-                 Write the full code for this specific file ```{file_path}``` only to satisfy requirement of this class.
-                 Do NOT write any other classes."""
-            )
-            user_proxy.stop_reply_at_receive(code_reviewer)
-            user_proxy.send("Interact with the Code Reviewer to adjust each file.", code_reviewer)
-
-            # user_proxy.initiate_chat(
-            #     manager,
-            #     message=f"""
-            #     This is the code you are going to fix: ```{file_path}```
-            #     This is the entire application source code for your reference and review: ```{str_source_code}```
-            #     Write the full code for this specific file ```{file_path}``` only to satisfy requirement of this class.
-            #     Do NOT write any other classes.
-            #     """,
-            #     clear_history=True
-            # )
-
-            # developer_message = user_proxy.last_message()["content"]
-            developer_message = None
-            for message in reversed(user_proxy.messages):
-                if message['name'] == 'CodeReviewer' and message['content'] is not None:
-                    developer_message = message['content']
-                    break   
-            print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
-            print(developer_message)
-            print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
-
-            # for message in reversed(groupchat.messages):
-            #     if message['name'] == 'CodeReviewer' and message['content'] is not None:
-            #         developer_message = message['content']
-            #         break   
-
-            if developer_message != "":
-                # regex = r"```(?:json)?\s*\n?({.*?})\s*\n?```"
-                regex = r"```python\s*\n?(.*?)\n?```"
-                matches = re.finditer(regex, developer_message, re.DOTALL)
-                for match in matches:
-                    code = match.group(1).strip()
-                    if "CODE" in code:
-                        continue
-                    self.source_code[file_path] = code
-            else:
-                print("Software Developer response is not structured properly")

@@ -2,216 +2,162 @@ import autogen
 import os
 import json
 import re
+from typing import Dict, List
+from utils.notetaker import NoteTaker
+from utils.seminar import Seminar
 
 from docx import Document
 
 class Design:
     def __init__(self):
-        self.generated_content: str = None
-        self.requirements: str = None
-        self.cto_plan: dict = []
+        self.architecture_document: str = None
         self.pm_plan: dict = []
         self.source_code: dict = {}
-    
+        self.file_structure: str = None
+        self.notetaker: NoteTaker = NoteTaker()
+
+        # setting variables
+        self.language: str = "Python"
+        self.cloud: str = "AWS"
+        self.cloud_services: str = "Containers, S3, IAM, SSM, DynamoDB"
+        self.config_list = autogen.config_list_from_json(
+            "notebook/OAI_CONFIG_LIST",
+            filter_dict={
+                "model": ["gpt-3.5-turbo-16k"]
+            },
+        )
     
     # analyzes the high level requirement and detailed requirement to come up with technical guidance
-    def cto_consultation(self, cpo_plan: dict, product_manager_plan: dict) -> None:
-        cpo_plan = json.dumps(cpo_plan)
-        product_manager_plan = json.dumps(product_manager_plan)
+    def _cto_consultation(self, product_manager_plan: str) -> str:
+        # final architecture document
+        architecture_document: str = None
+        
+        # combination of all notes from architecture component discussion
+        note_collection: str = ''
 
-        config_list=[
-            {
-                "model": "gpt-3.5-turbo-16k",
-                "api_key": os.environ.get("OPENAI_API_KEY")
-            }
+        architecture_components = [
+            {"phase": "high-level summary", "constraints": "Create a summary within 300 words. Do NOT discus any other details."},
+            {"phase": "file and folder structure", "constraints": "Determine a very detailed file and folder structure. Do NOT discus any other details."},
+            {"phase": "database requirement and design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do NOT discus any other details that database schema and requirements.'''},
+            {"phase": "cloud infrastructure design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do not talk about CI/CD, networking or basic infrastructure. Do NOT discus any other details.'''}
         ]
 
+        for component in architecture_components:
+            phase = component['phase']
+            constraints = component['constraints']
+            user_persona: dict = {
+                "name": "User",
+                "description": "This agent only responds once and then never speak again.",
+                "system_message": "User. Interact with the CTO and Software Architect to discuss the requirement. Final project break-down needs to be approved by this user.",
+                "human_input_mode": "TERMINATE",
+                "task": f"""
+                Product Manager has the following high-level requirement for my application: <plan>{product_manager_plan}</plan>
+                """
+            }
+            
+            critic_persona: dict = {
+                "name": "ChiefTechnologyOfficer",
+                "description": "CTO critique the work done by Software Architect and provides feedback.",
+                "system_message": f'''Chief Technology Officer. You are an expert in microservice design, software development and cloud architecture.
+                You analyze functional requirements, and review the plan from Software Architect.
+                Software Architect will only be talking about {phase}
+                Ensure you follow this rule: {constraints}
+                Programming language to be used: {self.language}.
+                Cloud services to be used: {self.cloud_services}
+                Provide feedback to the Software Architect to revise the plan 
+                '''
+            }
+
+            expert_persona: dict = {
+                "name": "SoftwareArchitect",
+                "description": "Software Architect will have the first speaker and the last speaker in this seminar",
+                "system_message": f'''Software Architect. You are an expert in Cloud, microservices and Python development. 
+                You analyze functional requirements thoroughly and break-down how this can be implemented in {self.language}.
+                You'll be determining {phase}
+                You must follow this rule: {constraints}
+                Revise your entire plan based on feedback from Chief Technology Officer and User until user approval.
+                '''
+            }
+
+            seminar: Seminar = Seminar()
+            seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
+
+            # remove the product plan, no need to send that
+            seminar_notes = seminar_notes[1:]
+
+            notetaker: NoteTaker = NoteTaker()
+            summary = notetaker.summarize("Revise the initial response from Software Architect and incorporate feedback from other speakers. Remove any duplicate information. Rewrite this in a formal 3rd party point of view.", seminar_notes)
+
+            note_collection = note_collection + '\n' + summary
+
+        notetaker: NoteTaker = NoteTaker()
+        architecture_document = notetaker.summarize("Create an architecture.md file based on these notes. DO NOT SUMMARIZE ", note_collection)
+        
+        return architecture_document
+
+    # extract a project plan
+    # project plan should be specific instructions to the developers to execute
+    # it should be split by files, and other common instructions
+    def _create_project_structure(self) -> str:
         user_proxy = autogen.UserProxyAgent(
             name = "User",
             llm_config={
-                "timeout": 600,
-                "cache_seed": 42,
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": config_list,
+                # "temperature": 0,
+                "config_list": self.config_list,
             },
-            system_message = "User. Interact with the CTO to discuss the requirement. Final project break-down needs to be approved by this user.",
+            system_message = "User. Interact with the Software Developer to create project structure based on the architecture diagram. Final project break-down needs to be approved by this user.",
             code_execution_config=False,
-            human_input_mode = "NEVER",
         )
 
-        # engineer = autogen.AssistantAgent(
-        #     name = "ChiefTechnologyOfficer",
-        #     llm_config={
-        #         "timeout": 600,
-        #         "cache_seed": 42,
-        #         "model": "gpt-3.5-turbo",
-        #         "config_list": config_list,
-        #     },
-        #     system_message = '''ChiefTechnologyOfficer. You follow an approved plan. You write python/shell code to solve tasks. Wrap the code in a code block that specifies the script type. The user can't modify your code. So do not suggest incomplete code which requires others to modify. Don't use a code block if it's not intended to be executed by the executor.
-        # Don't include multiple code blocks in one response. Do not ask others to copy and paste the result. Check the execution result returned by the executor.
-        # If the result indicates there is an error, fix the error and output the code again. Suggest the full code instead of partial code or code changes. If the error can't be fixed or if the task is not solved even after the code is executed successfully, analyze the problem, revisit your assumption, collect additional info you need, and think of a different approach to try.
-        # '''
-        # )
-        cto = autogen.AssistantAgent(
-            name = "ChiefTechnologyOfficer",
-            llm_config = config_list,
-            system_message = '''Chief Technology Officer. You are an expert in microservice design, software development and cloud architecture. You analyze functional requirements thoroughly and decide the high-level architecture.
-            You like to write this application in Python.
-            Decide project structure including folders and files for this application.
-            Write only the skeleton project structure in this format ```json[{"ComponentName": 'common or ComponentName from product manager's plan', "filePath": ['full-file-path-1.py', 'full-file-path-2.py'], "content": "...."}]```
+        software_developer = autogen.AssistantAgent(
+            name = "SoftwareDeveloper",
+            llm_config={
+                # "temperature": 0,
+                "config_list": self.config_list,
+            },
+            system_message = '''Software Developer. You are an expert Software Developer specializing in Python.
+            You will review the architecture document and extract the recommended project structure.
+            <files>
+            full path of the file
+            </files>
+            Revise the project structure based on feedback from user. Redraw the entire <files> in each response.
             '''
         )
 
-        # executor = autogen.UserProxyAgent(
-        #     name="Executor",
-        #     llm_config={
-        #         "timeout": 600,
-        #         "model": "gpt-3.5-turbo",
-        #         "cache_seed": 42,
-        #         "config_list": config_list,
-        #     },
-        #     system_message="Executor. Execute the code written by the engineer and report the result.",
-        #     human_input_mode="NEVER",
-        #     code_execution_config={"last_n_messages": 3, "work_dir": "coding"},
-        # )
-
-        critic = autogen.AssistantAgent(
-            name="Critic",
-            llm_config={
-                "timeout": 600,
-                "cache_seed": 42,
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": config_list,
-            },
-            system_message='''Critic. Double check plan, claims, code from other agents and provide feedback. CTO should only send response in this format ```json[{"ComponentName": "", "filePath": ['full-file-path-1.py', 'full-file-path-2.py'], "content": "...."}]``` and nothing more''',
-        )
-
-        groupchat = autogen.GroupChat(agents=[user_proxy, cto, critic], messages=[], max_round=5)
+        groupchat = autogen.GroupChat(agents=[user_proxy, software_developer], messages=[], max_round=3)
         manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-                "timeout": 600,
-                "cache_seed": 42,
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": config_list,
-            })
+                # "temperature": 0,
+                "config_list": self.config_list,
+            },)
 
         user_proxy.initiate_chat(
             manager,
-            message=f"""This is the functional requirement for my application. Please create a solution design for this application. 
-            Chief Product Officer has the following high-level requirement: ||{cpo_plan}||
-            Product Manager has gathered more information for each of the feature as below: ||{product_manager_plan}||
+            message=f"""Extract full file paths (in this format <files>full path</files>) for this project from this architecture document: <document>{self.architecture_document}</document>
             """
         )
 
-        cto_message = None
+        project_structure = None
         for message in reversed(groupchat.messages):
-            if message['name'] == 'ChiefTechnologyOfficer' and message['content'] is not None:
-                cto_message = message['content']
+            if message['name'] == 'SoftwareDeveloper' and message['content'] is not None:
+                project_structure = message['content']
                 break
         
-        cto_plan = []
-        if cto_message != "":
-            # regex = r"```(?:json)?\s*\n?({.*?})\s*\n?```"
-            regex = r"```(?:json)?\s*\n?(\[.*?\]|\{.*?\})\s*\n?```"
-            matches = re.finditer(regex, cto_message, re.DOTALL)
-            for match in matches:
-                code = match.group(1).strip()
-                if "CODE" in code:
-                    continue
-                cto_plan = json.loads(code)
-                self.cto_plan = cto_plan
-        else:
-            print("CTO plan is not structured properly")
+        return project_structure
+            
 
-    def _format_code(self, code):
-            code = "\n".join([line for line in code.split("\n") if len(line.strip()) > 0])
-            return code
 
-    def architect_solution(self, cpo_plan: dict, file_path: str, all_files: str, component_name: str, functional_requirement: str) -> None:
-        cpo_plan = json.dumps(cpo_plan)
+    def architect_solution(self, product_manager_plan: str) -> None:
+        seminar_result = self._cto_consultation(product_manager_plan)
 
-        config_list=[
-            {
-                "model": "gpt-3.5-turbo-16k",
-                "api_key": os.environ.get("OPENAI_API_KEY")
-            }
-        ]
+        self.architecture_document = seminar_result
 
-        user_proxy = autogen.UserProxyAgent(
-            name = "User",
-            llm_config={
-                "timeout": 600,
-                "cache_seed": 42,
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": config_list,
-            },
-            system_message = "User. Interact with the Project Manager to create a project plan. Final project break-down needs to be approved by this user.",
-            code_execution_config=False,
-            human_input_mode = "NEVER",
-        )
+        project_structure = self._create_project_structure()
+        self.file_structure = project_structure
 
-        cto = autogen.AssistantAgent(
-            name = "SolutionsArchitect",
-            llm_config = config_list,
-            system_message = '''Solutions Architect. You are an expert software architect. You are an expert in Cloud, microservices and Python development. You analyze functional requirements thoroughly, review the <filestructure> recommendation from CTO, overall product vision from CPO.
-            This application will be developed in Python.
-            Write only the skeleton for each of the file based on CTO's recommendation.
-            Your output should be strictly just one code block.
-            '''
-        )
+        file_paths = project_structure.strip().split("\n")[1:-1]
 
-        critic = autogen.AssistantAgent(
-            name="Critic",
-            llm_config={
-                "timeout": 600,
-                "cache_seed": 42,
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": config_list,
-            },
-            system_message='''Critic. Double check plan, claims, code from other agents and provide feedback. Solutions Architect must have considered filestructure recommended by CTO. Solutions Architect must be giving code blocks with matching file names''',
-        )
+        # initiate source code dict
+        for file_path in file_paths:
+            self.source_code[file_path] = ""
 
-        CodeReviewer = autogen.AssistantAgent(
-            name = "CodeReviewer",
-            llm_config = {
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": config_list
-            },
-            system_message='''Code Reviewer. You are responsible to format the code and ensure output is separated in multiple codeblocks with filename. i.e: ```file.py```'''
-        )
-
-        groupchat = autogen.GroupChat(agents=[user_proxy, cto, critic, CodeReviewer], messages=[], max_round=5)
-        manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-                "timeout": 600,
-                "cache_seed": 42,
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": config_list,
-            })
-
-        user_proxy.initiate_chat(
-            manager,
-            message=f"""
-            Write a high-level code for only this file |||{file_path}||| in relation to overall requirement.
-            Just for reference CTO has recommended the following files and classes: |||{all_files}|||
-            to develop the component: |||{component_name}|||
-            Chief Product Officer created the plan as below for the component: |||{cpo_plan}|||
-            This is the functional requirement from product manager: |||{functional_requirement}|||
-            """
-        )
-
-        sa_message = None
-        for message in reversed(groupchat.messages):
-            if message['name'] == 'SolutionsArchitect' and message['content'] is not None:
-                sa_message = message['content']
-                break   
-
-        if sa_message != "":
-            # regex = r"```(?:json)?\s*\n?({.*?})\s*\n?```"
-            regex = r"```python\s*\n?(.*?)\n?```"
-            matches = re.finditer(regex, sa_message, re.DOTALL)
-            for match in matches:
-                code = match.group(1).strip()
-                if "CODE" in code:
-                    continue
-                self.source_code[file_path] = self._format_code(code)
-        else:
-            print("CTO plan is not structured properly")
+        print("**** Solution Design Completed ***")
