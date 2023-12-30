@@ -13,13 +13,14 @@ class Design:
         self.architecture_document: str = None
         self.root_folder: str = None        
         self.source_code: dict = {}
-        self.file_structure: str = None
+        self.project_structure: str = ''
         self.notetaker: NoteTaker = NoteTaker()
 
         # setting variables
         self.language: str = "Python"
         self.cloud: str = "AWS"
         self.cloud_services: str = "Containers, S3, IAM, SSM, DynamoDB"
+        self.serverless: bool = True
         self.config_list = autogen.config_list_from_json(
             "notebook/OAI_CONFIG_LIST",
             filter_dict={
@@ -35,11 +36,58 @@ class Design:
         # combination of all notes from architecture component discussion
         note_collection: str = ''
 
+        # architecture_components = [
+        #     {"phase": "high-level summary", "constraints": "Create a summary within 300 words. Do NOT discus any other details."},
+        #     {"phase": "file and folder structure", "constraints": "Determine a very detailed file and folder structure. Do NOT discus any other details."},
+        #     {"phase": "database requirement and design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do NOT discus any other details that database schema and requirements.'''},
+        #     {"phase": "cloud infrastructure design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do not talk about CI/CD, networking or basic infrastructure. Do NOT discus any other details.'''}
+        # ]
+
         architecture_components = [
             {"phase": "high-level summary", "constraints": "Create a summary within 300 words. Do NOT discus any other details."},
-            {"phase": "file and folder structure", "constraints": "Determine a very detailed file and folder structure. Do NOT discus any other details."},
-            {"phase": "database requirement and design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do NOT discus any other details that database schema and requirements.'''},
-            {"phase": "cloud infrastructure design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do not talk about CI/CD, networking or basic infrastructure. Do NOT discus any other details.'''}
+            {"phase": "AWS cloud components for this application", "constraints": '''Only use these services where necessary - API Gateway, Lambda, DynamoDB, S3, SSM, SecurityGroup, IAM, and CloudWatch.
+            
+            These rules must be followed:
+             Rule #1: There should be no generic descriptions for each of these services.
+             Rule #2: Each services must be evaluated against the overall plan and functional requirements to ensure whether they are needed or not.
+             Rule #3: There must be naming convention for each of the components
+             Rule #4: You must review and adjust the overall recommendation for cohesion.
+             Rule #5: This response will be used by another architect to create detailed plan. Keep the integration and cohesion in mind for this round.
+
+            ** Important ** 
+            Example of a good response:
+            This application will be implemented using the following Cloud Services: API Gateway, Lambda, DynamoDB, S3, SSM, and SecurityGroup.
+            API Gateway:
+             - API Gateway 1:
+                - spec
+             - API Gateway 2:
+                - spec
+            Lambdas:
+             - Lambda 1:
+                - name:
+                - purpose:
+             - Lambda 2:
+                - name:
+                - purpose:
+            SSM parameters:
+             - Parameter 1:
+                - name:
+                - purpose:
+            DynamoDB:
+             - table 1
+                - purpose:
+                - name:
+    
+            Example of a poor response:
+            You can use AWS API Gateway, Azure API Gateway for endpoints. You can use Azure Functions, Containers, or AWS to run your application.
+            API Gateway
+            Lambdas: use lambda for compute
+            ssm parameters: use ssm parameters
+            DynamoDB: use dynamodb for storing data
+            S3 bucket: use s3 bucket to storing files
+
+            Now, think step by step on how the given functional requirements should be implemented. Create a cohesive and integrated Cloud Architecture to implement the services. Review your recommendation at least 3 times to ensure integrated plan.
+            '''}
         ]
 
         for component in architecture_components:
@@ -103,52 +151,75 @@ class Design:
     # project plan should be specific instructions to the developers to execute
     # it should be split by files, and other common instructions
     def _create_project_structure(self) -> str:
-        user_proxy = autogen.UserProxyAgent(
-            name = "User",
-            llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },
-            system_message = "User. Interact with the Software Developer to create project structure based on the architecture diagram. Final project break-down needs to be approved by this user.",
-            code_execution_config=False,
-        )
+        project_structure: str = ''
 
-        software_developer = autogen.AssistantAgent(
-            name = "SoftwareDeveloper",
-            llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },
-            system_message = '''Software Developer. You are an expert Software Developer specializing in Python.
-            You will review the architecture document and extract the recommended project structure.
-            <files>
-            full path of the file
-            </files>
-            Revise the project structure based on feedback from user. Redraw the entire <files> in each response.
-            '''
-        )
+        # project_structure_rules = [
+        #     '''Extract full file paths (in this format 
+        #     <files>
+        #     full path
+        #     </files>)'''
+        # ]
+        
 
-        groupchat = autogen.GroupChat(agents=[user_proxy, software_developer], messages=[], max_round=3)
-        manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },)
+        project_structure_rules = [
+            f'''Extract the lambda functions to be created in this format for each Lambda function.
+            <lambda>
+            name:
+            description:
+            constraints:
+            </lambda>
+            
+            ''',
+            # '''Create OpenAPI spec for AWS API Gateway and provide the response in this format:
+            # <apigateway>
+            # </apigateway>''',
+            # '''Determine if a S3 bucket is required. If it is, then determine S3 bucket name and provide the response in this format:
+            # <s3bucket>
+            # </s3bucket>'''
+        ]
+        
+        for rule in project_structure_rules:
+            user_proxy = autogen.UserProxyAgent(
+                name = "User",
+                llm_config={
+                    # "temperature": 0,
+                    "config_list": self.config_list,
+                },
+                system_message = "User. Interact with the Software Developer to create project structure based on the architecture diagram. Final project break-down needs to be approved by this user.",
+                code_execution_config=False,
+            )
 
-        user_proxy.initiate_chat(
-            manager,
-            message=f"""Extract full file paths (in this format <files>full path</files>) for this project from this architecture document: <document>{self.architecture_document}</document>
-            """
-        )
+            software_developer = autogen.AssistantAgent(
+                name = "SoftwareDeveloper",
+                llm_config={
+                    # "temperature": 0,
+                    "config_list": self.config_list,
+                },
+                system_message = f'''Software Developer. You are an expert Software Developer specializing in Python.
+                You will review the architecture document and {rule}
+                Revise the project structure based on feedback from user.
+                '''
+            )
 
-        project_structure = None
-        for message in reversed(groupchat.messages):
-            if message['name'] == 'SoftwareDeveloper' and message['content'] is not None:
-                project_structure = message['content']
-                break
+            groupchat = autogen.GroupChat(agents=[user_proxy, software_developer], messages=[], max_round=3)
+            manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
+                    # "temperature": 0,
+                    "config_list": self.config_list,
+                },)
+
+            user_proxy.initiate_chat(
+                manager,
+                message=f"""{rule} for this project from this architecture document: <document>{self.architecture_document}</document>
+                """
+            )
+
+            for message in reversed(groupchat.messages):
+                if message['name'] == 'SoftwareDeveloper' and message['content'] is not None:
+                    project_structure = project_structure + '\n' + message['content']
+                    break
         
         return project_structure
             
-
 
     def architect_solution(self, product_manager_plan: str) -> None:
         seminar_result = self._cto_consultation(product_manager_plan)
@@ -156,9 +227,15 @@ class Design:
         self.architecture_document = seminar_result
 
         project_structure = self._create_project_structure()
-        self.file_structure = project_structure
-
-        file_paths = project_structure.strip().split("\n")[1:-1]
+        self.project_structure = project_structure
+            
+        # if this is not serverless, then project structure is the file structure
+        if self.serverless:
+            pattern = r"<lambda>.*?name:\s*(\w+).*?</lambda>"
+            matches = re.findall(pattern, self.project_structure, re.DOTALL)
+            file_paths = [f"/lambda_functions/{name.replace('Handler', '')}/lambda_function.py" for name in matches]
+        else:
+            file_paths = project_structure.strip().split("\n")[1:-1]
 
         # initiate source code dict
         for file_path in file_paths:
