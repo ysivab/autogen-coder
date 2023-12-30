@@ -5,7 +5,6 @@ import re
 import subprocess
 import shutil
 
-from docx import Document
 from utils.notetaker import NoteTaker
 from utils.seminar import Seminar
 from utils.extract_code import extract_code
@@ -28,6 +27,13 @@ class Integrate:
         self.integration_constraints = '''
             - This is for Lambda functions
             - User cannot read text. You must ensure format is in a codeblock with the filename for the dependency
+        '''
+        self.devops_constraints = '''
+            You must follow these rules:
+            Rule #1: Don't create any resources that are not mentioned in the architecture document
+            Rule #2: Never leave any placeholders or test code in your template.
+            Rule #3: Entire template must be ready for production release
+            Rule #4: Review the template at least 5 times for syntax errors, consistencies, and integration
         '''
         self.config_list = autogen.config_list_from_json(
             "notebook/OAI_CONFIG_LIST",
@@ -175,27 +181,77 @@ class Integrate:
             print(f"Error:\n{process.stderr}")
 
 
-    def _generate_iam_policies(self, source_code, human_input_mode) -> str:
+    # def _generate_iam_policies(self, source_code, human_input_mode) -> str:
+    #     user_persona: dict = {
+    #         "name": "User",
+    #         "description": "This agent only responds once and then never speak again.",
+    #         "system_message": "User. Interact with the Software Developer to help a implement the function. Final project break-down needs to be approved by this user.",
+    #         "human_input_mode": human_input_mode,
+    #         "task": f"""
+    #         Here's the full project structure for your reference <project-structure>{self.project_structure}</project-structure>. 
+    #         Write the full code for only this specific component <component>{file_path}</component> only to satisfy requirement on the <document> below.
+    #         You must follow these rules: {self.developer_constraints}
+    #         This is the architecture document <document>{self.architecture_document}</document>
+    #         Do NOT write any other classes.
+    #         """
+    #     }
+
+    #     expert_persona: dict = {
+    #         "name": "CloudEngineer",
+    #         "description": "This agent will be the first speaker and the last speaker in this seminar",
+    #         "system_message": f'''Software Developer. You are part of a group of expert Python software developers. You analyze full functional requirements thoroughly.
+    #         You must follow all these rules below:
+    #         Rule #1: You will write the code for the specific component you've been asked to develop. Don't write any other components, only focus on your component.
+    #         Rule #2: Your output should be strictly just one code block.
+    #         Rule #3: You will always rewrite the entire code and return in your response.
+    #         Rule #4: Never leave any placeholder code, or sample code or "test" values. The code must be ready for production.
+    #         '''
+    #     }
+
+    #     critic_persona: dict = {
+    #         "name": "Critic",
+    #         "description": "This agent only speaks once, and only after Cloud Engineer to critique the work",
+    #         "system_message": '''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.
+    #         You must follow one rule: Always write the entire code and return with your response. Not just the suggestion.''',
+    #     }
+
+    #     seminar: Seminar = Seminar()
+    #     seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
+
+    #     # find the last code block and send it as the source code
+    #     source_code: str = None
+    #     for message in reversed(seminar_notes):
+    #         pattern = r"```(?:\w+)?\s*\n(.*?)\n```"
+    #         matches = re.findall(pattern, message['content'], re.DOTALL)
+            
+    #         # only one code block is expected. if there's no code block OR
+    #         # if there are multiple code blocks, then human involve required
+    #         if len(matches) == 1:
+    #             source_code = matches[0].strip()
+    #             break      
+    #     print("IAM Role")
+            
+    def _create_cloudformation(self, human_input_mode) -> str:
         user_persona: dict = {
             "name": "User",
             "description": "This agent only responds once and then never speak again.",
-            "system_message": "User. Interact with the Software Developer to help a implement the function. Final project break-down needs to be approved by this user.",
+            "system_message": "User. Interact with the DevOps Engineer to help a develop deployment template. Final project break-down needs to be approved by this user.",
             "human_input_mode": human_input_mode,
             "task": f"""
-            Here's the full project structure for your reference <project-structure>{self.project_structure}</project-structure>. 
-            Write the full code for only this specific component <component>{file_path}</component> only to satisfy requirement on the <document> below.
-            You must follow these rules: {self.developer_constraints}
+            Develop a CloudFormation template to deploy the resources to AWS according to the requirement on the <document> below.
+            Lambda function codes are zipped and saved in s3 bucket with the lambda function name as key s3://am-autogen-coder/{{key}}
+            {self.devops_constraints}
             This is the architecture document <document>{self.architecture_document}</document>
             Do NOT write any other classes.
             """
         }
 
         expert_persona: dict = {
-            "name": "SoftwareDeveloper",
+            "name": "DevOpsEngineer",
             "description": "This agent will be the first speaker and the last speaker in this seminar",
-            "system_message": f'''Software Developer. You are part of a group of expert Python software developers. You analyze full functional requirements thoroughly.
+            "system_message": f'''DevOps Engineer. You are an expert DevOps Engineer. You analyze full architecture document thoroughly.
             You must follow all these rules below:
-            Rule #1: You will write the code for the specific component you've been asked to develop. Don't write any other components, only focus on your component.
+            Rule #1: You will focus only on the components mentioned on the architecture document. Nothing more.
             Rule #2: Your output should be strictly just one code block.
             Rule #3: You will always rewrite the entire code and return in your response.
             Rule #4: Never leave any placeholder code, or sample code or "test" values. The code must be ready for production.
@@ -204,8 +260,8 @@ class Integrate:
 
         critic_persona: dict = {
             "name": "Critic",
-            "description": "This agent only speaks once, and only after Software Developer to critique the work",
-            "system_message": '''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.
+            "description": "This agent only speaks once, and only after DevOpsEngineer to critique the work",
+            "system_message": '''Critic. Double check plan, and code from other agents and provide feedback. DevOps Engineer must return the output in just one code block.
             You must follow one rule: Always write the entire code and return with your response. Not just the suggestion.''',
         }
 
@@ -222,9 +278,10 @@ class Integrate:
             # if there are multiple code blocks, then human involve required
             if len(matches) == 1:
                 source_code = matches[0].strip()
-                break      
-        print("IAM Role")
+                break
 
+        print("CloudFormation Created")
+        return source_code
 
     def resolve_dependency(self):
         if self.serverless is True:
@@ -262,5 +319,9 @@ class Integrate:
                 self.cloud_stack_map.append({"lambda": directory})
 
                 
+    def prepare_deployment(self):
+        if self.serverless is True:
+            cloud_formation_template = self._create_cloudformation("NEVER")
 
+            print(cloud_formation_template)
                 
