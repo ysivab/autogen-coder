@@ -4,8 +4,9 @@ import json
 import sys
 import re
 from typing import Dict, List
-
 from docx import Document
+
+from utils.seminar import Seminar
 
 class Plan:
     def __init__(self):
@@ -18,6 +19,28 @@ class Plan:
                 "model": ["gpt-3.5-turbo-16k"]
             },
         )
+
+        self.product_manager_constraints = '''
+        You must follow all the rules below:
+        Rule #1: Analze the entire requirement thoroughly and identify any gaps
+        Rule #2: Don't make any assumptions on requirement. Ask the user to clarify.
+        Rule #3: Always write the entirety of the plan.
+        Rule #4: Capsulate the actual product functional requirement in <plan></plan>.
+        ** IMPORTANT **
+        Here's an example of a good response for your reference:
+        As per the discussion, here's the final product requirement
+        <plan>
+        # intro
+        # design etc etc.
+        </plan>
+
+        Here's an example of a bad response:
+        <plan>
+        As per the discussion, here's the final product requirement
+        # intro
+        # design etc etc.
+        </plan>
+        '''
     
     # check if document is valid and not empty
     # extract content and save it in requirements
@@ -27,118 +50,59 @@ class Plan:
 
 
     # start seminar between agents
-    def _start_seminar(self) -> List[Dict]:
-        termination_msg = lambda x: isinstance(x, dict) and "TERMINATE" == str(x.get("content", ""))[-9:].upper()
+    def _start_seminar(self, human_input_mode) -> str:
+        user_persona: dict = {
+            "name": "User",
+            "description": "This agent only responds once and then never speak again.",
+            "system_message": "User. Interact with the Product Manager to discuss and finalize application requirement. Final decision needs to be approved by this user.",
+            "human_input_mode": human_input_mode,
+            "task": f"""
+            This is my business requirement. Please write me a comprehensive product functional requirement for a technical implementation: " {self.requirements}
+            You must follow these rules: {self.product_manager_constraints}
+            """
+        }
 
-        user_proxy = autogen.UserProxyAgent(
-            name = "User",
-            is_termination_msg=termination_msg,
-            llm_config={
-                "config_list": self.config_list,
-            },
-            system_message = "User. Interact with the Chief Product Officer and Product Manager to discuss the requirement. Final project break-down needs to be approved by this user.",
-            code_execution_config=False,
-            human_input_mode = "NEVER",
-            default_auto_reply="Reply `TERMINATE` if the task is done.",
-        )
-
-        cpo = autogen.AssistantAgent(
-            name = "ChiefProductOfficer",
-            is_termination_msg=termination_msg,
-            llm_config={
-                "config_list": self.config_list,
-            },
-            system_message = '''CPO. You are an expert in complex product development. You analyze business requirements from the user, and double check the plan from ProductManager.
-            If necessary, provide feedback to Product Manager to improve the plan.
-            If the user provides any feedback, review the feedback with the business requirement thoroughly and send the instruction to Product Manager.
-            Do not write the plan yourself. You are responsible only to critic the work of Product Manager.
-            Reply `TERMINATE` in the end when everything is done.
+        expert_persona: dict = {
+            "name": "ProductManager",
+            "description": "This agent will be the first speaker and the last speaker in this seminar",
+            "system_message": f'''Product Manager. You are an expert in Product Development. You analyze business requirements thoroughly and create a comprehensive product functional requirement. Functional requirement must include schema details for database, and other details.
+            You must follow all these rules below:
+            Rule #1: You will analyze the requirement, prepare questions and ask the user to clarify any requirement before finalizing the requirement.
+            Rule #2: You will always rewrite the entire product functional requirement in if you are incorporating the feedback.
+            Rule #3: Never make ambiguous statements. The functional requirement must be very clear and direct. 
+            Rule #4: Capsulate the actual product functional requirement in <plan></plan>.
             '''
-        )
+        }
 
-        product_manager = autogen.AssistantAgent(
-            name = "ProductManager",
-            is_termination_msg=termination_msg,
-            llm_config={
-                "config_list": self.config_list,
-            },
-            system_message = '''ProductManager. You are an expert in Product Development. You analyze business requirements thoroughly and create a comprehensive product functional requirement. Functional requirement must include schema details for database, and other details.            
-            You MUST revise the plan based on feedback from CPO, and user until user approval. You must also send the plan in this format:
-            <feature: name>
-            # your plan
-            </feature>
-            '''
-        )
+        critic_persona: dict = {
+            "name": "Critic",
+            "description": "This agent only speaks once, and only after Software Developer to critique the work",
+            "system_message": '''Critic. Double check plan, responses from other agents and provide feedback. 
+            You must follow one rule: Always write the product functional requirement in <plan></plan> and return with your response. Not just the suggestion.''',
+        }
 
-        groupchat = autogen.GroupChat(agents=[user_proxy, product_manager, cpo, product_manager], messages=[], max_round=5, speaker_selection_method="round_robin", allow_repeat_speaker=False)
-        manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },)
+        seminar: Seminar = Seminar()
+        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
 
-        user_proxy.initiate_chat(
-            manager,
-            message="This is my business requirement. Please write me a comprehensive product functional requirement for a technical implementation: " + self.requirements,
-        )
-
-        return groupchat.messages
-    
-
-    # summarize seminar result and get the final plan
-    def _summarize(self, seminar_result: List[Dict]) -> str:
-        seminar_result = json.dumps(seminar_result)
-        termination_msg = lambda x: isinstance(x, dict) and "TERMINATE" == str(x.get("content", ""))[-9:].upper()
-
-        product_manager = autogen.AssistantAgent(
-            name = "ProductManager",
-            is_termination_msg=termination_msg,
-            llm_config={
-                "temperature": 0,
-                "config_list": self.config_list,
-            },
-            system_message = '''Product Manager. You are an expert Product Manager.
-            You will review the requirement from the user and capture product features.
-            You must send the plan in this format:
-            <feature: name>
-            # your plan
-            </feature>
-            Reply `TERMINATE` in the end when everything is done.
-            '''
-        )
-
-        user_proxy = autogen.UserProxyAgent(
-            name = "User",
-            is_termination_msg=termination_msg,
-            llm_config={
-                "timeout": 600,
-                "cache_seed": 42,
-                "model": "gpt-3.5-turbo-16k",
-                "config_list": self.config_list,
-            },
-            human_input_mode = "NEVER",
-            code_execution_config=False,
-            default_auto_reply="Reply `TERMINATE` if the task is done.",
-        )
-
-        user_proxy.initiate_chat(
-            product_manager,
-            message=f"""
-                You had a discussion with multiple people for a product and captured the notes here. Participants in this meeting is discussing over multiple <feature> for a product.: <notes>{seminar_result}</notes>
-                Summarize these notes and write the final product features.
-                """
-        )
-
-        product_plan = user_proxy.last_message()['content']
-        
+        # find the last code block and send it as the source code
+        product_plan: str = None
+        for message in reversed(seminar_notes):
+            pattern = r"<plan>(?:\w+)?\s*\n(.*?)\n</plan>"
+            matches = re.findall(pattern, message['content'], re.DOTALL)
+            
+            # only one code block is expected. if there's no code block OR
+            # if there are multiple code blocks, then human involve required
+            if len(matches) == 1:
+                product_plan = matches[0].strip()
+                break                
+            
         return product_plan
     
 
     # Review the word document and create high-level components
     def analyze_and_plan(self) -> None:
-        seminar_result = self._start_seminar()
-        product_plan = self._summarize(seminar_result)
-
-        self.product_plan = product_plan
+        seminar_result = self._start_seminar("ALWAYS")
+        self.product_plan = seminar_result
 
 
         

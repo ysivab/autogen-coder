@@ -18,8 +18,6 @@ class Design:
 
         # setting variables
         self.language: str = "Python"
-        self.cloud: str = "AWS"
-        self.cloud_services: str = "Containers, S3, IAM, SSM, DynamoDB"
         self.serverless: bool = True
         self.config_list = autogen.config_list_from_json(
             "notebook/OAI_CONFIG_LIST",
@@ -29,9 +27,9 @@ class Design:
         )
     
     # analyzes the high level requirement and detailed requirement to come up with technical guidance
-    def _cto_consultation(self, product_manager_plan: str) -> str:
+    def _cto_consultation(self, product_manager_plan: str, human_input_mode) -> str:
         # final architecture document
-        architecture_document: str = None
+        architecture_document: str = ''
         
         # combination of all notes from architecture component discussion
         note_collection: str = ''
@@ -44,18 +42,39 @@ class Design:
         # ]
 
         architecture_components = [
-            {"phase": "high-level summary", "constraints": "Create a summary within 300 words. Do NOT discus any other details."},
-            {"phase": "AWS cloud components for this application", "constraints": '''Only use these services where necessary - API Gateway, Lambda, DynamoDB, S3, SSM, SecurityGroup, IAM, and CloudWatch.
-            
-            These rules must be followed:
-             Rule #1: There should be no generic descriptions for each of these services.
-             Rule #2: Each services must be evaluated against the overall plan and functional requirements to ensure whether they are needed or not.
-             Rule #3: There must be naming convention for each of the components
-             Rule #4: You must review and adjust the overall recommendation for cohesion.
-             Rule #5: This response will be used by another architect to create detailed plan. Keep the integration and cohesion in mind for this round.
+            {"phase": "high-level summary", "constraints": '''You must follow ALL of these rules: 
+             Rule #1: Create a summary within 300 words.
+             Rule #2: Never any other details.
+             Rule #3: Must encapsulate the actual summary in <response></response>.
+             ** IMPORTANT **
+             Here's an example of a good response:
+             Based on the analysis, here's the high-level requirement:
+             <response>
+             # high level requirement
+             </response>
+
+             Here's an example of a bad response:
+             <response>
+             Based on the analysis, here's the high-level requirement:
+             # high level requirement
+             </response>
+             '''},
+
+            {"phase": "AWS cloud components for this application", "constraints": '''
+            ALL of these rules must be followed:
+             Rule #1: Only use these services where necessary - API Gateway, Lambda, DynamoDB, S3, SSM, SecurityGroup, IAM, and CloudWatch.
+             Rule #2: Never discuss any other details
+             Rule #3: Must encapsulate the actual summary in <response></response>.
+             Rule #4: There should be no generic descriptions for each of these services.
+             Rule #5: Each services must be evaluated against the overall plan and functional requirements to ensure whether they are needed or not.
+             Rule #6: There must be naming convention for each of the components
+             Rule #7: You must review and adjust the overall recommendation for cohesion.
+             Rule #8: This response will be used by another architect to create detailed plan. Keep the integration and cohesion in mind for this round.
 
             ** Important ** 
-            Example of a good response:
+            Here's an example of a good response:
+             Based on the analysis, here's the high-level requirement
+             <response>
             This application will be implemented using the following Cloud Services: API Gateway, Lambda, DynamoDB, S3, SSM, and SecurityGroup.
             API Gateway:
              - API Gateway 1:
@@ -77,14 +96,17 @@ class Design:
              - table 1
                 - purpose:
                 - name:
-    
+            </response>
+             
             Example of a poor response:
+             <response>
             You can use AWS API Gateway, Azure API Gateway for endpoints. You can use Azure Functions, Containers, or AWS to run your application.
             API Gateway
             Lambdas: use lambda for compute
             ssm parameters: use ssm parameters
             DynamoDB: use dynamodb for storing data
             S3 bucket: use s3 bucket to storing files
+             </response>
 
             Now, think step by step on how the given functional requirements should be implemented. Create a cohesive and integrated Cloud Architecture to implement the services. Review your recommendation at least 3 times to ensure integrated plan.
             '''}
@@ -97,9 +119,10 @@ class Design:
                 "name": "User",
                 "description": "This agent only responds once and then never speak again.",
                 "system_message": "User. Interact with the Software Architect to discuss the requirement. Final project break-down needs to be approved by this user.",
-                "human_input_mode": "TERMINATE",
+                "human_input_mode": human_input_mode,
                 "task": f"""
-                Software Architect, I want you to determine the <task>{phase}</task> with the following constraints <constraint>{constraints}</constraints>. Do not discuss any other items.
+                Software Architect, I want you to determine the "{phase}".
+                {constraints}
                 Product Manager has the following high-level requirement for my application: <plan>{product_manager_plan}</plan>.
                 """
             }
@@ -110,7 +133,6 @@ class Design:
                 "system_message": f'''Critic. You will review SoftwareArchitect's response and compare it with user's request. Only review {phase} and nothing more.
                 Ensure you follow this rule: {constraints}
                 Programming language to be used: {self.language}.
-                Cloud services to be used: {self.cloud_services}
                 Provide feedback to the Software Architect to revise the plan 
                 '''
             }
@@ -129,16 +151,17 @@ class Design:
             seminar: Seminar = Seminar()
             seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
 
-            # remove the product plan, no need to send that
-            seminar_notes = seminar_notes[1:]
-
-            notetaker: NoteTaker = NoteTaker()
-            summary = notetaker.summarize("Revise the initial response from Software Architect and incorporate feedback from other speakers. Remove any duplicate information. Rewrite this in a formal 3rd party point of view.", seminar_notes)
-
-            note_collection = note_collection + '\n' + summary
-
-        notetaker: NoteTaker = NoteTaker()
-        architecture_document = notetaker.summarize("Create an architecture.md file based on these notes. DO NOT SUMMARIZE ", note_collection)
+            # find the last code block and send it as the source code
+            # architecture_document: str = None
+            for message in reversed(seminar_notes):
+                pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
+                matches = re.findall(pattern, message['content'], re.DOTALL)
+                
+                # only one response is expected. if there's no <response> OR
+                # if there are multiple <response>, then human involvement required
+                if len(matches) == 1:
+                    architecture_document = architecture_document + "\n" + matches[0].strip()
+                    break                
 
         # write to disk
         file_path = os.path.join(self.root_folder, 'architecture-design.md')
@@ -163,6 +186,24 @@ class Design:
 
         project_structure_rules = [
             f'''Extract the lambda functions to be created in this format for each Lambda function.
+            You must follow this rule:
+            Rule #1: You must give each lambda function as separate element encapsulated in <lambda></lambda>
+
+            ** Important **
+            Here's an example of bad response
+            <lambda>
+            lambda 1
+            lambda 2
+            lambda 3
+            </lambda>
+
+            Here's an example of a good response
+            Based on the analysis, here's the break-down
+            <lambda>
+            name:
+            description:
+            constraints:
+            </lambda>
             <lambda>
             name:
             description:
@@ -222,7 +263,7 @@ class Design:
             
 
     def architect_solution(self, product_manager_plan: str) -> None:
-        seminar_result = self._cto_consultation(product_manager_plan)
+        seminar_result = self._cto_consultation(product_manager_plan, "NEVER")
 
         self.architecture_document = seminar_result
 
