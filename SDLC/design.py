@@ -1,15 +1,19 @@
 import autogen
 import os
-import json
 import re
-from typing import Dict, List
+import importlib
+
 from utils.notetaker import NoteTaker
 from utils.seminar import Seminar
-
-from docx import Document
+# from config.awssls.design import architecture_components, project_structure_rules
 
 class Design:
-    def __init__(self):
+    def __init__(self, config_type):
+        config_module = importlib.import_module(f"config.{config_type}.design")
+
+        self.architecture_components = getattr(config_module, 'architecture_components', None)
+        self.project_structure_rules = getattr(config_module, 'project_structure_rules', None)
+
         self.architecture_document: str = None
         self.root_folder: str = None        
         self.source_code: dict = {}
@@ -30,89 +34,8 @@ class Design:
     def _cto_consultation(self, product_manager_plan: str, human_input_mode) -> str:
         # final architecture document
         architecture_document: str = ''
-        
-        # combination of all notes from architecture component discussion
-        note_collection: str = ''
 
-        # architecture_components = [
-        #     {"phase": "high-level summary", "constraints": "Create a summary within 300 words. Do NOT discus any other details."},
-        #     {"phase": "file and folder structure", "constraints": "Determine a very detailed file and folder structure. Do NOT discus any other details."},
-        #     {"phase": "database requirement and design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do NOT discus any other details that database schema and requirements.'''},
-        #     {"phase": "cloud infrastructure design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do not talk about CI/CD, networking or basic infrastructure. Do NOT discus any other details.'''}
-        # ]
-
-        architecture_components = [
-            {"phase": "high-level summary", "constraints": '''You must follow ALL of these rules: 
-             Rule #1: Create a summary within 300 words.
-             Rule #2: Never any other details.
-             Rule #3: Must encapsulate the actual summary in <response></response>.
-             ** IMPORTANT **
-             Here's an example of a good response:
-             Based on the analysis, here's the high-level requirement:
-             <response>
-             # high level requirement
-             </response>
-
-             Here's an example of a bad response:
-             <response>
-             Based on the analysis, here's the high-level requirement:
-             # high level requirement
-             </response>
-             '''},
-
-            {"phase": "AWS cloud components for this application", "constraints": '''
-            ALL of these rules must be followed:
-             Rule #1: Only use these services where necessary - API Gateway, Lambda, DynamoDB, S3, SSM, SecurityGroup, IAM, and CloudWatch.
-             Rule #2: Never discuss any other details
-             Rule #3: Must encapsulate the actual summary in <response></response>.
-             Rule #4: There should be no generic descriptions for each of these services.
-             Rule #5: Each services must be evaluated against the overall plan and functional requirements to ensure whether they are needed or not.
-             Rule #6: There must be naming convention for each of the components
-             Rule #7: You must review and adjust the overall recommendation for cohesion.
-             Rule #8: This response will be used by another architect to create detailed plan. Keep the integration and cohesion in mind for this round.
-
-            ** Important ** 
-            Here's an example of a good response:
-             Based on the analysis, here's the high-level requirement
-             <response>
-            This application will be implemented using the following Cloud Services: API Gateway, Lambda, DynamoDB, S3, SSM, and SecurityGroup.
-            API Gateway:
-             - API Gateway 1:
-                - spec
-             - API Gateway 2:
-                - spec
-            Lambdas:
-             - Lambda 1:
-                - name:
-                - purpose:
-             - Lambda 2:
-                - name:
-                - purpose:
-            SSM parameters:
-             - Parameter 1:
-                - name:
-                - purpose:
-            DynamoDB:
-             - table 1
-                - purpose:
-                - name:
-            </response>
-             
-            Example of a poor response:
-             <response>
-            You can use AWS API Gateway, Azure API Gateway for endpoints. You can use Azure Functions, Containers, or AWS to run your application.
-            API Gateway
-            Lambdas: use lambda for compute
-            ssm parameters: use ssm parameters
-            DynamoDB: use dynamodb for storing data
-            S3 bucket: use s3 bucket to storing files
-             </response>
-
-            Now, think step by step on how the given functional requirements should be implemented. Create a cohesive and integrated Cloud Architecture to implement the services. Review your recommendation at least 3 times to ensure integrated plan.
-            '''}
-        ]
-
-        for component in architecture_components:
+        for component in self.architecture_components:
             phase = component['phase']
             constraints = component['constraints']
             user_persona: dict = {
@@ -161,7 +84,7 @@ class Design:
                 # if there are multiple <response>, then human involvement required
                 if len(matches) == 1:
                     architecture_document = architecture_document + "\n" + matches[0].strip()
-                    break                
+                    break
 
         # write to disk
         file_path = os.path.join(self.root_folder, 'architecture-design.md')
@@ -184,42 +107,42 @@ class Design:
         # ]
         
 
-        project_structure_rules = [
-            f'''Extract the lambda functions to be created in this format for each Lambda function.
-            You must follow this rule:
-            Rule #1: You must give each lambda function as separate element encapsulated in <lambda></lambda>
+        # project_structure_rules = [
+        #     f'''Extract the lambda functions to be created in this format for each Lambda function.
+        #     You must follow this rule:
+        #     Rule #1: You must give each lambda function as separate element encapsulated in <lambda></lambda>
 
-            ** Important **
-            Here's an example of bad response
-            <lambda>
-            lambda 1
-            lambda 2
-            lambda 3
-            </lambda>
+        #     ** Important **
+        #     Here's an example of bad response
+        #     <lambda>
+        #     lambda 1
+        #     lambda 2
+        #     lambda 3
+        #     </lambda>
 
-            Here's an example of a good response
-            Based on the analysis, here's the break-down
-            <lambda>
-            name:
-            description:
-            constraints:
-            </lambda>
-            <lambda>
-            name:
-            description:
-            constraints:
-            </lambda>
+        #     Here's an example of a good response
+        #     Based on the analysis, here's the break-down
+        #     <lambda>
+        #     name:
+        #     description:
+        #     constraints:
+        #     </lambda>
+        #     <lambda>
+        #     name:
+        #     description:
+        #     constraints:
+        #     </lambda>
             
-            ''',
+        #     ''',
             # '''Create OpenAPI spec for AWS API Gateway and provide the response in this format:
             # <apigateway>
             # </apigateway>''',
             # '''Determine if a S3 bucket is required. If it is, then determine S3 bucket name and provide the response in this format:
             # <s3bucket>
             # </s3bucket>'''
-        ]
+        # ]
         
-        for rule in project_structure_rules:
+        for rule in self.project_structure_rules:
             user_proxy = autogen.UserProxyAgent(
                 name = "User",
                 llm_config={
@@ -238,7 +161,7 @@ class Design:
                 },
                 system_message = f'''Software Developer. You are an expert Software Developer specializing in Python.
                 You will review the architecture document and {rule}
-                Revise the project structure based on feedback from user.
+                Revise the project structure based on feedback from user and critic.
                 '''
             )
 
@@ -263,23 +186,22 @@ class Design:
             
 
     def architect_solution(self, product_manager_plan: str) -> None:
-        seminar_result = self._cto_consultation(product_manager_plan, "NEVER")
+        seminar_result = self._cto_consultation(product_manager_plan, "ALWAYS")
 
         self.architecture_document = seminar_result
 
         project_structure = self._create_project_structure()
         self.project_structure = project_structure
-            
+        pattern = r"<response>.*?name:\s*(\w+).*?</response>"
+        matches = re.findall(pattern, self.project_structure, re.DOTALL)
+
         # if this is not serverless, then project structure is the file structure
         if self.serverless:
-            pattern = r"<lambda>.*?name:\s*(\w+).*?</lambda>"
-            matches = re.findall(pattern, self.project_structure, re.DOTALL)
             file_paths = [f"/lambda_functions/{name.replace('Handler', '')}/lambda_function.py" for name in matches]
         else:
-            file_paths = project_structure.strip().split("\n")[1:-1]
+            file_paths = [{name} for name in matches]
+            # file_paths = project_structure.strip().split("\n")[1:-1]
 
         # initiate source code dict
         for file_path in file_paths:
             self.source_code[file_path] = ""
-
-        print("**** Solution Design Completed ***")

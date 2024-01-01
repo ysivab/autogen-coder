@@ -18,7 +18,7 @@ class Develop:
         self.serverless: bool = True
         self.developer_constraints = '''
             Rule #1: Never write any other class than what you are asked to do in this case.
-            Rule #2: Other classes and files will be written by other developors
+            Rule #2: Other classes and files will be written by other developers
             Rule #3: Never leave placeholders. Always implement the functionality
             Rule #4: Review the architecture document carefully and understand what this exact function is supposed to do.
             Rule #5: Ensure this file / class is connected to the rest of the application through recommendation from Architecture Document.
@@ -45,7 +45,7 @@ class Develop:
         # Write content to the file
         with open(file_path, 'w') as file:
             file.write(code)
-            
+
 
     # software development phase
     def _development_seminar(self, file_path, human_input_mode="NEVER") -> str:

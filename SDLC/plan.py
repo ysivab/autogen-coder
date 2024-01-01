@@ -1,15 +1,12 @@
 import autogen
-import os
-import json
-import sys
 import re
-from typing import Dict, List
+
 from docx import Document
 
 from utils.seminar import Seminar
 
 class Plan:
-    def __init__(self):
+    def __init__(self, config_type):
         self.requirements: str = None
         self.product_plan: str = None
 
@@ -103,6 +100,3 @@ class Plan:
     def analyze_and_plan(self) -> None:
         seminar_result = self._start_seminar("ALWAYS")
         self.product_plan = seminar_result
-
-
-        
