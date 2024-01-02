@@ -45,7 +45,7 @@ class Seminar:
             system_message = expert_persona['system_message']
         )
 # speaker_selection_method="round_robin", 
-        groupchat = autogen.GroupChat(agents=[user_proxy, expert, critic], messages=[], max_round=5, allow_repeat_speaker=False)
+        groupchat = autogen.GroupChat(agents=[user_proxy, expert, critic], messages=[], max_round=10, allow_repeat_speaker=False)
         manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
                 # "temperature": 0,
                 "config_list": self.config_list,

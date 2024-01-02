@@ -4,17 +4,28 @@ import json
 import re
 
 from utils.seminar import Seminar
-from config.awssls.develop import developer_constraints
 
 class Develop:
-    def __init__(self, config_type):
-        self.config_type = config_type
-
+    def __init__(self):
+        self.generated_content: str = None
+        self.requirements: str = None
         self.root_folder: str = None
+        self.project_plan: dict = []
         self.source_code: dict = {}
         self.project_structure: str = None
         self.architecture_document: str = None
 
+        self.serverless: bool = True
+        self.developer_constraints = '''
+            Rule #1: Never write any other class than what you are asked to do in this case.
+            Rule #2: Other classes and files will be written by other developers
+            Rule #3: Never leave placeholders. Always implement the functionality
+            Rule #4: Review the architecture document carefully and understand what this exact function is supposed to do.
+            Rule #5: Ensure this file / class is connected to the rest of the application through recommendation from Architecture Document.
+            Rule #6: Think step by step, and then review the overall cohesion with the architecture document before writing this specific file / class.
+            Rule #7: Never forget rule # 1. Don't write other classes or files. Only focus on the current file.
+            Rule #8: Always respond with the entirety of the code. Not just the feedback or suggestion.
+        '''
 
     # software developer to write code to the disk
     def _write_code_to_disk(self, file_path, code):
@@ -45,8 +56,8 @@ class Develop:
             "human_input_mode": human_input_mode,
             "task": f"""
             Here's the full project structure for your reference <project-structure>{self.project_structure}</project-structure>. 
-            Write the full code for only this specific component {file_path} only to satisfy requirement on the <document> below.
-            You must follow these rules: {developer_constraints}
+            Write the full code for only this specific component <component>{file_path}</component> only to satisfy requirement on the <document> below.
+            You must follow these rules: {self.developer_constraints}
             This is the architecture document <document>{self.architecture_document}</document>
             Do NOT write any other classes.
             """
@@ -98,8 +109,20 @@ class Develop:
             # involve human if no code block or if there are multiple code blocks
             if seminar_notes is None:
                 seminar_notes = self._development_seminar(file_path, "ALWAYS")
-
+            else:
+                print("CODE SUCCESS #*(#$*)(#*$()@*#$)(*@#)$(*@#)($*)@#(*$()@#*$)(*@#$)(*@#$)(*@#)($*)@(#$*)@(#$*@#$)(*)")
+            # if there's multiple code blocks or no code block at all, let's try development again
+            # matches = re.findall(r'```', seminar_notes)
+            # if len(matches) > 1 or len(matches) == 0:
+            #     seminar_notes = self._development_seminar(file_path)
+        
+            # self.source_code[file_path] = self._summarizer(seminar_notes)
             self.source_code[file_path] = seminar_notes
+
+            # code QA run to find any placeholder and remove
+            # seminar_notes =  self._placeholder_check(file_path)
+            # self.source_code[file_path] = seminar_notes
+            # self.source_code[file_path] = self._summarizer(seminar_notes)
 
 
     # save the code to local disk

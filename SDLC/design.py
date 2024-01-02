@@ -1,25 +1,29 @@
 import autogen
 import os
-import json
 import re
-from typing import Dict, List
-from utils.notetaker import NoteTaker
+import importlib
+import json
+
 from utils.seminar import Seminar
 
-from docx import Document
-
 class Design:
-    def __init__(self):
+    def __init__(self, config_type):
+        self.config_type = config_type
+
+        # load common configs
+        common_module = importlib.import_module(f"config.{self.config_type}.common")
+        self.language = getattr(common_module, 'language', "python")
+
+        # load custom configs
+        config_module = importlib.import_module(f"config.{self.config_type}.design")
+        self.architecture_components = getattr(config_module, 'architecture_components', None)
+        self.project_structure_rules = getattr(config_module, 'project_structure_rules', None)
+
         self.architecture_document: str = None
         self.root_folder: str = None        
         self.source_code: dict = {}
-        self.file_structure: str = None
-        self.notetaker: NoteTaker = NoteTaker()
+        self.project_structure: str = ''
 
-        # setting variables
-        self.language: str = "Python"
-        self.cloud: str = "AWS"
-        self.cloud_services: str = "Containers, S3, IAM, SSM, DynamoDB"
         self.config_list = autogen.config_list_from_json(
             "notebook/OAI_CONFIG_LIST",
             filter_dict={
@@ -28,30 +32,21 @@ class Design:
         )
     
     # analyzes the high level requirement and detailed requirement to come up with technical guidance
-    def _cto_consultation(self, product_manager_plan: str) -> str:
+    def _cto_consultation(self, product_manager_plan: str, human_input_mode) -> str:
         # final architecture document
-        architecture_document: str = None
-        
-        # combination of all notes from architecture component discussion
-        note_collection: str = ''
+        architecture_document: str = ''
 
-        architecture_components = [
-            {"phase": "high-level summary", "constraints": "Create a summary within 300 words. Do NOT discus any other details."},
-            {"phase": "file and folder structure", "constraints": "Determine a very detailed file and folder structure. Do NOT discus any other details."},
-            {"phase": "database requirement and design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do NOT discus any other details that database schema and requirements.'''},
-            {"phase": "cloud infrastructure design", "constraints": '''Application will be deployed in {self.cloud} with the following services {self.cloud_services}. Do not talk about CI/CD, networking or basic infrastructure. Do NOT discus any other details.'''}
-        ]
-
-        for component in architecture_components:
+        for component in self.architecture_components:
             phase = component['phase']
             constraints = component['constraints']
             user_persona: dict = {
                 "name": "User",
                 "description": "This agent only responds once and then never speak again.",
                 "system_message": "User. Interact with the Software Architect to discuss the requirement. Final project break-down needs to be approved by this user.",
-                "human_input_mode": "TERMINATE",
+                "human_input_mode": human_input_mode,
                 "task": f"""
-                Software Architect, I want you to determine the <task>{phase}</task> with the following constraints <constraint>{constraints}</constraints>. Do not discuss any other items.
+                Software Architect, I want you to determine the "{phase}".
+                {constraints}
                 Product Manager has the following high-level requirement for my application: <plan>{product_manager_plan}</plan>.
                 """
             }
@@ -62,7 +57,6 @@ class Design:
                 "system_message": f'''Critic. You will review SoftwareArchitect's response and compare it with user's request. Only review {phase} and nothing more.
                 Ensure you follow this rule: {constraints}
                 Programming language to be used: {self.language}.
-                Cloud services to be used: {self.cloud_services}
                 Provide feedback to the Software Architect to revise the plan 
                 '''
             }
@@ -81,16 +75,17 @@ class Design:
             seminar: Seminar = Seminar()
             seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
 
-            # remove the product plan, no need to send that
-            seminar_notes = seminar_notes[1:]
-
-            notetaker: NoteTaker = NoteTaker()
-            summary = notetaker.summarize("Revise the initial response from Software Architect and incorporate feedback from other speakers. Remove any duplicate information. Rewrite this in a formal 3rd party point of view.", seminar_notes)
-
-            note_collection = note_collection + '\n' + summary
-
-        notetaker: NoteTaker = NoteTaker()
-        architecture_document = notetaker.summarize("Create an architecture.md file based on these notes. DO NOT SUMMARIZE ", note_collection)
+            # find the last code block and send it as the source code
+            # architecture_document: str = None
+            for message in reversed(seminar_notes):
+                pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
+                matches = re.findall(pattern, message['content'], re.DOTALL)
+                
+                # only one response is expected. if there's no <response> OR
+                # if there are multiple <response>, then human involvement required
+                if len(matches) == 1:
+                    architecture_document = architecture_document + "\n" + matches[0].strip()
+                    break
 
         # write to disk
         file_path = os.path.join(self.root_folder, 'architecture-design.md')
@@ -102,7 +97,9 @@ class Design:
     # extract a project plan
     # project plan should be specific instructions to the developers to execute
     # it should be split by files, and other common instructions
-    def _create_project_structure(self) -> str:
+    def _extract_project_structure(self, human_input_mode) -> str:
+        project_structure: str = ''
+        
         user_proxy = autogen.UserProxyAgent(
             name = "User",
             llm_config={
@@ -111,6 +108,7 @@ class Design:
             },
             system_message = "User. Interact with the Software Developer to create project structure based on the architecture diagram. Final project break-down needs to be approved by this user.",
             code_execution_config=False,
+            human_input_mode = human_input_mode
         )
 
         software_developer = autogen.AssistantAgent(
@@ -119,16 +117,14 @@ class Design:
                 # "temperature": 0,
                 "config_list": self.config_list,
             },
-            system_message = '''Software Developer. You are an expert Software Developer specializing in Python.
-            You will review the architecture document and extract the recommended project structure.
-            <files>
-            full path of the file
-            </files>
-            Revise the project structure based on feedback from user. Redraw the entire <files> in each response.
+            system_message = f'''Software Developer. You are an expert Software Developer specializing in Python.
+            You will review the architecture document.
+            {self.project_structure_rules}
+            Revise the project structure based on feedback from user.
             '''
         )
 
-        groupchat = autogen.GroupChat(agents=[user_proxy, software_developer], messages=[], max_round=3)
+        groupchat = autogen.GroupChat(agents=[user_proxy, software_developer], messages=[], max_round=5)
         manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
                 # "temperature": 0,
                 "config_list": self.config_list,
@@ -136,32 +132,46 @@ class Design:
 
         user_proxy.initiate_chat(
             manager,
-            message=f"""Extract full file paths (in this format <files>full path</files>) for this project from this architecture document: <document>{self.architecture_document}</document>
+            message=f"""{self.project_structure_rules} for this project from this architecture document: <document>{self.architecture_document}</document>
             """
         )
 
-        project_structure = None
         for message in reversed(groupchat.messages):
             if message['name'] == 'SoftwareDeveloper' and message['content'] is not None:
-                project_structure = message['content']
+                project_structure = project_structure + '\n' + message['content']
                 break
         
         return project_structure
             
 
-
     def architect_solution(self, product_manager_plan: str) -> None:
-        seminar_result = self._cto_consultation(product_manager_plan)
+        seminar_result = self._cto_consultation(product_manager_plan, "ALWAYS")
 
         self.architecture_document = seminar_result
 
-        project_structure = self._create_project_structure()
-        self.file_structure = project_structure
+        self.create_project_structure()        
 
-        file_paths = project_structure.strip().split("\n")[1:-1]
+
+    def create_project_structure(self) -> str:
+        project_structure = self._extract_project_structure("ALWAYS")
+        self.project_structure = project_structure
+        pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
+        matches = re.findall(pattern, self.project_structure, re.DOTALL)
+
+        # if this is not serverless, then project structure is the file structure
+        if self.config_type == "awssls":
+            file_paths = [f"/lambda_functions/{name.replace('Handler', '')}/lambda_function.py" for name in matches]
+        else:
+            file_paths = matches
+
+        # print("file_path: " + json.dumps(file_paths))
 
         # initiate source code dict
         for file_path in file_paths:
             self.source_code[file_path] = ""
+            
 
-        print("**** Solution Design Completed ***")
+
+    def read_architecture_doc(self, architecture_doc) -> None:
+        with open(architecture_doc, 'r', encoding='utf-8') as file:
+            self.architecture_document = file.read()
