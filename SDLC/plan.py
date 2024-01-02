@@ -46,6 +46,11 @@ class Plan:
         self.requirements = '\n'.join([paragraph.text for paragraph in doc.paragraphs])
 
 
+    # user might set task as well than providing a requirement doc
+    def set_task(self, task) -> None:
+        self.requirements = task
+
+
     # start seminar between agents
     def _start_seminar(self, human_input_mode) -> str:
         user_persona: dict = {

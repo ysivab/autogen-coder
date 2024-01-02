@@ -1,0 +1,35 @@
+import boto3
+
+def read_s3_bucket(bucket_name):
+    try:
+        # Configure AWS credentials
+        aws_access_key_id = 'YOUR_ACCESS_KEY_ID'
+        aws_secret_access_key = 'YOUR_SECRET_ACCESS_KEY'
+        
+        # Create an S3 client
+        s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+        
+        # Read content from the S3 bucket
+        response = s3.get_object(Bucket=bucket_name)
+        
+        if 'Body' not in response:
+            raise Exception("S3 object does not exist or bucket is empty")
+        
+        content = response['Body'].read().decode('utf-8')
+        
+        return content
+        
+    except boto3.exceptions.Boto3Error as e:
+        print(f"Error accessing S3 bucket: {e}")
+        # Raise exception or return error message based on the use case
+
+# Main function to display content from S3 bucket
+def display_s3_bucket_content():
+    bucket_name = 'onlyth' # Name of the pre-existing S3 bucket
+    content = read_s3_bucket(bucket_name)
+    
+    # Display the content as text
+    print(content)
+
+if __name__ == '__main__':
+    display_s3_bucket_content()

@@ -74,8 +74,7 @@ architecture_components = [
     }
 ]
 
-project_structure_rules = [
-    '''
+project_structure_rules = '''
     Extract the lambda functions to be created in this format for each Lambda function.
     You must follow this rule:
     Rule #1: You must give each lambda function as separate element encapsulated in <response></response>
@@ -100,5 +99,4 @@ project_structure_rules = [
         description:
         constraints:
     </response>
-    '''
-]
+'''

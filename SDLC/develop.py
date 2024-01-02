@@ -7,16 +7,14 @@ from utils.seminar import Seminar
 from config.awssls.develop import developer_constraints
 
 class Develop:
-    def __init__(self):
-        self.generated_content: str = None
-        self.requirements: str = None
+    def __init__(self, config_type):
+        self.config_type = config_type
+
         self.root_folder: str = None
-        self.project_plan: dict = []
         self.source_code: dict = {}
         self.project_structure: str = None
         self.architecture_document: str = None
 
-        self.serverless: bool = True
 
     # software developer to write code to the disk
     def _write_code_to_disk(self, file_path, code):

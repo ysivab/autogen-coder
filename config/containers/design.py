@@ -77,9 +77,23 @@ architecture_components = [
     }
 ]
 
-project_structure_rules = [
-    '''Extract full file paths (in this format 
+project_structure_rules ='''Extract full file paths for this project.
+    You must follow this rule:
+    Rule #1: You must give your response in <response></response>
+    Rule #2: You must have only the file name in the <respone>. Other texts should never be inside <response>
+
+    ** Important **
+    Here's an example of bad response
     <response>
-    full path
-    </response>)'''
-]
+    here are some files based on analysis
+    file1
+    file2
+    file3
+    </response>
+
+    Here's an example of a good response
+    Here's the file structure based on analysis
+    <response>
+    file1
+    </response>
+'''
