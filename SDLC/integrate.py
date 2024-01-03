@@ -1,34 +1,38 @@
 import autogen
 import os
-import json
+import importlib
 import re
 import subprocess
 import shutil
 
 from utils.seminar import Seminar
-from utils.deployer import Deployer
-
-from config.awssls.integrate import devops_constraints, rules_identify_dependencies, rules_identify_resources
-from config.awssls.common import language, allowed_cloud_resources
+from utils.awslambda import package_lambda, upload_lambda
 
 class Integrate:
-    def __init__(self):
-        self.generated_content: str = None
-        self.requirements: str = None
+    def __init__(self, config_type):
+        self.config_type = config_type
+
         self.root_folder: str = None
         self.project_plan: dict = []
         self.source_code: dict = {}
         self.project_structure: str = None
         self.architecture_document: str = None
 
-        self.serverless: bool = True
+        # load common configs
+        common_module = importlib.import_module(f"config.{self.config_type}.common")
+        self.language = getattr(common_module, 'language', "python")
+        self.infra_stack = getattr(common_module, 'infra_stack', ["containers"])
+
+        # load custom configs
+        config_module = importlib.import_module(f"config.{self.config_type}.integrate")
+        self.devops_constraints = getattr(config_module, 'devops_constraints', None)
+        self.rules_identify_dependencies = getattr(config_module, 'rules_identify_dependencies', None)
+        self.rules_identify_resources = getattr(config_module, 'rules_identify_resources', None)
 
         self.cloud_stack_map: dict = {}
-        self.source_code_on_disk: dict = []
 
         self.asset_bucket: str = "olnyth"
 
-        
         self.config_list = autogen.config_list_from_json(
             "notebook/OAI_CONFIG_LIST",
             filter_dict={
@@ -80,7 +84,7 @@ class Integrate:
             message=f'''
                 Identify the dependencies for the source code below.
                 Source code: <code>{source_code}</code>
-                {rules_identify_dependencies}
+                {self.rules_identify_dependencies}
                 '''
         )
 
@@ -90,113 +94,28 @@ class Integrate:
         
 
     def _install_dependencies(self, directory, file_path) -> None:
-        if language.lower() == "python":
-            package_directory = os.path.join(directory, "packages")
-            file_path = os.path.join(self.root_folder, file_path)
-            lambda_path = os.path.join(self.root_folder, directory)
-            lambda_zip_path = os.path.join(lambda_path, directory.replace('lambda_functions/', '') + ".zip")
+        if self.config_type.lower() == "awslambda":
+            packaged_lambda = package_lambda(file_path, self.language, self.root_folder)
+            lambda_code = upload_lambda(packaged_lambda, self.asset_bucket)
+            print("23942830498290348203948290348290384209384234")
+            print(lambda_code)
+            print("23942830498290348203948290348290384209384234")
+        else:
+            cmd = []
+            for command in cmd:
+                process = subprocess.run(
+                    command,
+                    cwd=self.root_folder,
+                    capture_output=True,
+                    text=True,
+                )
 
-            # if directory already exist, let's clean it
-            if os.path.exists(self.root_folder + "/" + package_directory):
-                shutil.rmtree(self.root_folder + "/" + package_directory)
-            os.makedirs(self.root_folder + "/" + package_directory)
+                if process.returncode == 0:
+                    print(f"Output:\n{process.stdout}")
+                else:
+                    print(process.stdout)
+                    print(f"Error:\n{process.stderr}")
 
-
-            print("lambda_path: " + lambda_path)
-            print("lambda_zip_path: " + lambda_zip_path)
-            print("file_path: " + file_path)
-            print("package_directory: " + package_directory)
-
-            cmd = [
-                [
-                    "pip",
-                    "install",
-                    "-r",
-                    file_path,
-                    "--target",
-                    package_directory
-                ],
-                [
-                    "zip",
-                    "-r",
-                    lambda_zip_path,
-                    package_directory
-                ],
-                [
-                    "zip",
-                    "-u",
-                    lambda_zip_path,
-                    directory + "/lambda_function.py"
-                ]
-            ]
-        
-        for command in cmd:
-            process = subprocess.run(
-                command,
-                cwd=self.root_folder,
-                capture_output=True,
-                text=True,
-            )
-
-            if process.returncode == 0:
-                print(f"Output:\n{process.stdout}")
-            else:
-                print(process.stdout)
-                print(f"Error:\n{process.stderr}")
-
-
-
-    # def _create_cloudformation(self, human_input_mode) -> str:
-    #     user_persona: dict = {
-    #         "name": "User",
-    #         "description": "This agent only responds once and then never speak again.",
-    #         "system_message": "User. Interact with the DevOps Engineer to help a develop deployment template. Final project break-down needs to be approved by this user.",
-    #         "human_input_mode": human_input_mode,
-    #         "task": f"""
-    #         Develop a CloudFormation template to deploy the resources to AWS according to the requirement on the <document> below.
-    #         Lambda function codes are zipped and saved in s3 bucket with the lambda function name as key s3://am-autogen-coder/{{key}}
-    #         {self.devops_constraints}
-    #         This is the architecture document <document>{self.architecture_document}</document>
-    #         Do NOT write any other classes.
-    #         """
-    #     }
-
-    #     expert_persona: dict = {
-    #         "name": "DevOpsEngineer",
-    #         "description": "This agent will be the first speaker and the last speaker in this seminar",
-    #         "system_message": f'''DevOps Engineer. You are an expert DevOps Engineer. You analyze full architecture document thoroughly.
-    #         You must follow all these rules below:
-    #         Rule #1: You will focus only on the components mentioned on the architecture document. Nothing more.
-    #         Rule #2: Your output should be strictly just one code block.
-    #         Rule #3: You will always rewrite the entire code and return in your response.
-    #         Rule #4: Never leave any placeholder code, or sample code or "test" values. The code must be ready for production.
-    #         '''
-    #     }
-
-    #     critic_persona: dict = {
-    #         "name": "Critic",
-    #         "description": "This agent only speaks once, and only after DevOpsEngineer to critique the work",
-    #         "system_message": '''Critic. Double check plan, and code from other agents and provide feedback. DevOps Engineer must return the output in just one code block.
-    #         You must follow one rule: Always write the entire code and return with your response. Not just the suggestion.''',
-    #     }
-
-    #     seminar: Seminar = Seminar()
-    #     seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
-
-    #     # find the last code block and send it as the source code
-    #     source_code: str = None
-    #     for message in reversed(seminar_notes):
-    #         pattern = r"```(?:\w+)?\s*\n(.*?)\n```"
-    #         matches = re.findall(pattern, message['content'], re.DOTALL)
-            
-    #         # only one code block is expected. if there's no code block OR
-    #         # if there are multiple code blocks, then human involve required
-    #         if len(matches) == 1:
-    #             source_code = matches[0].strip()
-    #             break
-
-    #     print("CloudFormation Created")
-    #     return source_code
         
     def _identify_resource(self, resource, human_input_mode) -> None:
         user_persona: dict = {
@@ -206,9 +125,9 @@ class Integrate:
             "human_input_mode": human_input_mode,
             "task": f"""
             Identify if {resource} is required to support the application according to the requirement on the <document> below.
-            {devops_constraints}
+            {self.devops_constraints}
             This is the architecture document <document>{self.architecture_document}</document>
-            {rules_identify_resources}
+            {self.rules_identify_resources}
             """
         }
 
@@ -243,96 +162,10 @@ class Integrate:
             if match:
                 self.cloud_stack_map[resource] = match.group(1).strip()
                 break
-            # only one code block is expected. if there's no code block OR
-            # if there are multiple code blocks, then human involve required
-            # for match in matches:
-            #     self.cloud_stack_map.append({"resource": match.strip()})
-
-        # print(json.dumps(self.cloud_stack_map))
-        # return source_code
-
-
-    def _upload_code_to_s3(self, directory) -> None:
-        if language.lower() == "python":
-            lambda_directory = os.path.join(self.root_folder, directory)
-            lambda_zip_path = os.path.join(lambda_directory, directory.replace('lambda_functions/', '') + ".zip")
-
-            files: str = ''
-            # get all the files in the lambda directory for packaging
-            for file in os.listdir(lambda_directory):
-                # Create full path
-                full_path = os.path.join(directory, file)
-
-                # Check if it's a file and not a directory
-                if os.path.isfile(full_path):
-                    files = files + full_path + ' '
-                # print("full_path: " + full_path)
-            # files = ' '.join(files)
-            print("files joined: " + files)
-            cmd = [
-                [
-                    "zip",
-                    "-u",
-                    lambda_zip_path,
-                    files
-                ],
-                [
-                    "aws",
-                    "s3",
-                    "cp",
-                    lambda_zip_path,
-                    "s3://" + self.asset_bucket + "/" + directory + ".zip"
-                ]
-            ]
-        
-        for command in cmd:
-            process = subprocess.run(
-                command,
-                cwd=self.root_folder,
-                capture_output=True,
-                text=True,
-            )
-
-            if process.returncode == 0:
-                print(f"Output:\n{process.stdout}")
-            else:
-                print(f"Error:\n{process.stderr}")
-        # user_persona: dict = {
-        #     "name": "User",
-        #     "description": "This is the user that coordinates the entire flow.",
-        #     # "description": "This agent only responds once and then never speak again.",
-        #     "system_message": "User. Interact with the DevOps Engineer to help deploy resources to cloud. Final project break-down needs to be approved by this user.",
-        #     "human_input_mode": human_input_mode,
-        #     "task": f"""
-        #     Lambda code, and dependency packages are in this directory {os.path.join(self.root_folder, directory)}. This is a {self.language} Lambda. Upload this code to this s3 bucket - s3://olnyth/.
-        #     """
-        # }
-
-        # expert_persona: dict = {
-        #     "name": "DevOpsEngineer",
-        #     "description": "This role reviews the requirement from the user and make the first response. This agent also listens to the feedback from Critic and make the necessary adjustment",
-        #     # "description": "This agent will be the first speaker and the last speaker in this seminar",
-        #     "system_message": f'''DevOps Engineer. You are an expert DevOps Engineer. You analyze full architecture document thoroughly.
-        #     You must follow all these rules below:
-        #     Rule #1: Never ask the user to modify or replace any value. Do it yourself and give a command that's executable.
-        #     Rule #3: Use the account ID "320499649792"
-        #     '''
-        # }
-
-        # # critic_persona: dict = {
-        # #     "name": "Critic",
-        # #     "description": "This agent will review the recommendation from DevOpsEngineer and provide feedback to DevOpsEngineer",
-        # #     # "description": "This agent only speaks once, and only after DevOpsEngineer to critique the work",
-        # #     "system_message": '''Critic. Double check plan, and code from other agents and provide feedback. DevOps Engineer must return the output in just one code block.
-        # #     You must follow one rule: Always write the entire code and return with your response. Not just the suggestion.''',
-        # # }
-
-        # deployer: Deployer = Deployer()
-        # results = deployer.start(user_persona, expert_persona)
 
 
     def resolve_dependency(self):
-        if self.serverless is True:
+        if self.config_type == "awslambda":
             # group files by directory
             directory_files = {}
             for path, content in self.source_code.items():
@@ -363,13 +196,13 @@ class Integrate:
 
                 self._install_dependencies(directory, file_path)
 
-                self._upload_code_to_s3(directory)
+                # self._upload_code_to_s3(directory)
 
                 # save processed lambda into cloud stacks
-                self.source_code_on_disk.append({"lambda": "path - " + os.path.join(self.root_folder, directory)})
+                # self.source_code_on_disk.append({"lambda": "path - " + os.path.join(self.root_folder, directory)})
 
 
     def map_resources(self):
-        for allowed_resource in allowed_cloud_resources:
-            self._identify_resource(allowed_resource, "NEVER")
+        for resource in self.infra_stack:
+            self._identify_resource(resource, "NEVER")
 

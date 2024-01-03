@@ -5,6 +5,7 @@ import importlib
 import json
 
 from utils.seminar import Seminar
+from utils.awslambda import prepare_lambda_env
 
 class Design:
     def __init__(self, config_type):
@@ -100,6 +101,52 @@ class Design:
     def _extract_project_structure(self, human_input_mode) -> str:
         project_structure: str = ''
         
+        user_persona: dict = {
+            "name": "User",
+            "description": "This agent only responds once and then never speak again.",
+            "system_message": "User. Interact with the Software Architect to to create project structure based on the architecture document. Final project break-down needs to be approved by this user.",
+            "human_input_mode": human_input_mode,
+            "task": f"""{self.project_structure_rules} for this project from this architecture document: <document>{self.architecture_document}</document>
+            """
+        }
+            
+        critic_persona: dict = {
+            "name": "Critic",
+            "description": "This agent speaks after Software Architect's response. CTO critique the work done by Software Architect and provides feedback.",
+            "system_message": f'''Critic. You will review SoftwareArchitect's response and compare it with user's request.
+            {self.project_structure_rules}
+            Provide feedback to the Software Architect to revise the plan 
+            '''
+        }
+
+        expert_persona: dict = {
+            "name": "SoftwareArchitect",
+            "description": "This agent is the the first speaker and the last speaker in this seminar",
+            "system_message": f'''Software Architect. You are an expert in Cloud, microservices and {self.language} development. 
+            You will review the architecture document.
+            {self.project_structure_rules}
+            Revise the project structure based on feedback from user.
+            '''
+        }
+
+        seminar: Seminar = Seminar()
+        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
+
+        # find the last code block and send it as the source code
+        # architecture_document: str = None
+        for message in reversed(seminar_notes):
+            pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
+            match = re.search(pattern, message['content'], re.DOTALL)
+            
+            print("****** reversed seminar notes **********")
+            print(message['content'])
+
+            if match:
+                project_structure = message['content']
+                break
+
+        return project_structure
+        
         user_proxy = autogen.UserProxyAgent(
             name = "User",
             llm_config={
@@ -155,12 +202,14 @@ class Design:
     def create_project_structure(self) -> str:
         project_structure = self._extract_project_structure("ALWAYS")
         self.project_structure = project_structure
+
         pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
         matches = re.findall(pattern, self.project_structure, re.DOTALL)
 
         # if this is not serverless, then project structure is the file structure
-        if self.config_type == "awssls":
-            file_paths = [f"/lambda_functions/{name.replace('Handler', '')}/lambda_function.py" for name in matches]
+        if self.config_type == "awslambda":
+            file_paths = prepare_lambda_env(self.language, project_structure)
+            # file_paths = [f"/lambda_functions/{name.replace('Handler', '')}/lambda_function.py" for name in matches]
         else:
             file_paths = matches
 
@@ -170,7 +219,6 @@ class Design:
         for file_path in file_paths:
             self.source_code[file_path] = ""
             
-
 
     def read_architecture_doc(self, architecture_doc) -> None:
         with open(architecture_doc, 'r', encoding='utf-8') as file:

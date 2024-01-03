@@ -76,14 +76,14 @@ develop.write_code()
 develop.save_code()
 
 
-# # Integrate stage
-# integrate: Integrate = Integrate()
-
-# integrate.source_code = develop.source_code
-# integrate.architecture_document = design.architecture_document
-# integrate.root_folder = project_path
-# # resolve all package dependencies and map out resources to be deployed
-# integrate.resolve_dependency()
+# Integrate stage
+integrate: Integrate = Integrate(args.config)
+# pass the data from previous stages
+integrate.source_code = develop.source_code
+integrate.architecture_document = design.architecture_document
+integrate.root_folder = project_path
+# resolve all package dependencies and map out resources to be deployed
+integrate.resolve_dependency()
 # integrate.map_resources()
 
 # sandbox: Sandbox = Sandbox()
