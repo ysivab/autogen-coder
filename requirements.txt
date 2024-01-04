@@ -1,3 +1,4 @@
 python-docx
 IPython
 boto3
+pyautogen
