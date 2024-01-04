@@ -1,14 +1,20 @@
-import autogen
 import os
-import json
+import importlib
 import re
 
 from utils.seminar import Seminar
-from config.awssls.develop import developer_constraints
 
 class Develop:
     def __init__(self, config_type):
         self.config_type = config_type
+
+         # load common configs
+        common_module = importlib.import_module(f"config.{self.config_type}.common")
+        self.language = getattr(common_module, 'language', "python")
+
+        # load custom configs
+        config_module = importlib.import_module(f"config.{self.config_type}.develop")
+        self.developer_constraints = getattr(config_module, 'developer_constraints', None)
 
         self.root_folder: str = None
         self.source_code: dict = {}
@@ -46,7 +52,7 @@ class Develop:
             "task": f"""
             Here's the full project structure for your reference <project-structure>{self.project_structure}</project-structure>. 
             Write the full code for only this specific component {file_path} only to satisfy requirement on the <document> below.
-            You must follow these rules: {developer_constraints}
+            You must follow these rules: {self.developer_constraints}
             This is the architecture document <document>{self.architecture_document}</document>
             Do NOT write any other classes.
             """
@@ -55,7 +61,7 @@ class Develop:
         expert_persona: dict = {
             "name": "SoftwareDeveloper",
             "description": "This agent will be the first speaker and the last speaker in this seminar",
-            "system_message": f'''Software Developer. You are part of a group of expert Python software developers. You analyze full functional requirements thoroughly.
+            "system_message": f'''Software Developer. You are part of a group of expert {self.language} software developers. You analyze full functional requirements thoroughly.
             You must follow all these rules below:
             Rule #1: You will write the code for the specific component you've been asked to develop. Don't write any other components, only focus on your component.
             Rule #2: Your output should be strictly just one code block.

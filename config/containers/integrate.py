@@ -22,7 +22,7 @@ rules_identify_dependencies = '''
     ** IMPORTANT **
     You must strictly follow all the rules listed below.
     Rule #1
-    There should never be any packages that are comes with AWS Lambda
+    Never install any packages that are already part of basic Python installation
 
     Rule #2
     You must provide the response in single code block.

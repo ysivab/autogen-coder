@@ -5,6 +5,7 @@ import importlib
 import json
 
 from utils.seminar import Seminar
+from utils.awslambda import prepare_lambda_env
 
 class Design:
     def __init__(self, config_type):
@@ -100,47 +101,47 @@ class Design:
     def _extract_project_structure(self, human_input_mode) -> str:
         project_structure: str = ''
         
-        user_proxy = autogen.UserProxyAgent(
-            name = "User",
-            llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },
-            system_message = "User. Interact with the Software Developer to create project structure based on the architecture diagram. Final project break-down needs to be approved by this user.",
-            code_execution_config=False,
-            human_input_mode = human_input_mode
-        )
+        user_persona: dict = {
+            "name": "User",
+            "description": "This agent only responds once and then never speak again.",
+            "system_message": "User. Interact with the Software Architect to to create project structure based on the architecture document. Final project break-down needs to be approved by this user.",
+            "human_input_mode": human_input_mode,
+            "task": f"""{self.project_structure_rules} for this project from this architecture document: <document>{self.architecture_document}</document>
+            """
+        }
+            
+        critic_persona: dict = {
+            "name": "Critic",
+            "description": "This agent speaks after Software Architect's response. CTO critique the work done by Software Architect and provides feedback.",
+            "system_message": f'''Critic. You will review SoftwareArchitect's response and compare it with user's request.
+            {self.project_structure_rules}
+            Provide feedback to the Software Architect to revise the plan 
+            '''
+        }
 
-        software_developer = autogen.AssistantAgent(
-            name = "SoftwareDeveloper",
-            llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },
-            system_message = f'''Software Developer. You are an expert Software Developer specializing in Python.
+        expert_persona: dict = {
+            "name": "SoftwareArchitect",
+            "description": "This agent is the the first speaker and the last speaker in this seminar",
+            "system_message": f'''Software Architect. You are an expert in Cloud, microservices and {self.language} development. 
             You will review the architecture document.
             {self.project_structure_rules}
             Revise the project structure based on feedback from user.
             '''
-        )
+        }
 
-        groupchat = autogen.GroupChat(agents=[user_proxy, software_developer], messages=[], max_round=5)
-        manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },)
+        seminar: Seminar = Seminar()
+        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
 
-        user_proxy.initiate_chat(
-            manager,
-            message=f"""{self.project_structure_rules} for this project from this architecture document: <document>{self.architecture_document}</document>
-            """
-        )
-
-        for message in reversed(groupchat.messages):
-            if message['name'] == 'SoftwareDeveloper' and message['content'] is not None:
-                project_structure = project_structure + '\n' + message['content']
+        # find the last code block and send it as the source code
+        # architecture_document: str = None
+        for message in reversed(seminar_notes):
+            pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
+            match = re.search(pattern, message['content'], re.DOTALL)
+            
+            if match:
+                project_structure = message['content']
                 break
-        
+
         return project_structure
             
 
@@ -155,22 +156,20 @@ class Design:
     def create_project_structure(self) -> str:
         project_structure = self._extract_project_structure("ALWAYS")
         self.project_structure = project_structure
+
         pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
         matches = re.findall(pattern, self.project_structure, re.DOTALL)
 
         # if this is not serverless, then project structure is the file structure
-        if self.config_type == "awssls":
-            file_paths = [f"/lambda_functions/{name.replace('Handler', '')}/lambda_function.py" for name in matches]
+        if self.config_type == "awslambda":
+            file_paths = prepare_lambda_env(self.language, project_structure)
         else:
             file_paths = matches
-
-        # print("file_path: " + json.dumps(file_paths))
 
         # initiate source code dict
         for file_path in file_paths:
             self.source_code[file_path] = ""
             
-
 
     def read_architecture_doc(self, architecture_doc) -> None:
         with open(architecture_doc, 'r', encoding='utf-8') as file:

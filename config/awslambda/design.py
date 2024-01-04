@@ -90,13 +90,13 @@ project_structure_rules = '''
     Here's an example of a good response
     Based on the analysis, here's the break-down
     <response>
-        name:
-        description:
-        constraints:
+        <name>name</name>
+        <description>description</description>
+        <constraints>constraints</constraints>
     </response>
     <response>
-        name:
-        description:
-        constraints:
+        <name>name</name>
+        <description>description</description>
+        <constraints>constraints</constraints>
     </response>
 '''
