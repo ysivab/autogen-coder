@@ -19,6 +19,7 @@ resource_constraints = {
         Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
         Rule #2: You must randomize the resource name to avoid conflicts
         Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
+        Rule #4: Never forget to connect the API Gateway to the Lambdas to send the traffic.
     ''',
     "Lambda": '''
         Each Lambda function code and all dependent libraries are in these folder {json.dumps(self.cloud_stack_map)}
@@ -28,8 +29,9 @@ resource_constraints = {
         Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
         Rule #2: You must randomize the resource name to avoid conflicts
         Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
-        Rule #4: You must ensure Lambda code URI is not a placeholder. Lambda URI will only come from the data given to you in <packages></packages>
-        Rule #5: This Lambda will not be deployed inside a VPC
+        Rule #4: You must ensure Lambda code URI is not a placeholder. Lambda URI will only come from the data given to you in <packages></packages>.
+        Rule #5: Never use any "parameters" in your CloudFormation. Always put the actual value in your CloudFormation template.
+        Rule #6: This Lambda will not be deployed inside a VPC
     ''',
     "S3-bucket": '''
         *** IMPORTANT ***

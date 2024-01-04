@@ -7,5 +7,6 @@ developer_constraints = '''
     Rule #6: Think step by step, and then review the overall cohesion with the architecture document before writing this specific file / class.
     Rule #7: Never forget rule # 1. Don't write other classes or files. Only focus on the current file.
     Rule #8: Always respond with the entirety of the code. Not just the feedback or suggestion.
+    Rule #9: Python Lambda handler must be 'index.lambda_handler'.
 '''
 

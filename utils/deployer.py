@@ -25,7 +25,7 @@ class Deployer:
                 "use_docker": False,  # set to True or image name like "python:3" to use docker
             },
             human_input_mode = user_persona['human_input_mode'],
-            max_consecutive_auto_reply = 10,
+            max_consecutive_auto_reply = 20,
             is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
         )
 

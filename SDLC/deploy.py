@@ -161,7 +161,9 @@ class Deploy:
             "human_input_mode": "NEVER",
             "task": f"""
             Deployment file is created and saved under {file_path}. The content of the template file is as follows for your reference only <file>{self.deployment_template}</file>.
-            All necessary access keys are already uploaded to the enviornment variable. Deploy this template file to the platform.
+            All necessary access keys are already uploaded to the enviornment variable. Deploy this template file to the platform. 
+            *** IMPORTANT ***
+            Do not give me text instructions. Write me a bash / shell script to run. I'll return back with the results. Always give me shell / bash commands, and never text instructions.
             """
         }
 
@@ -169,7 +171,8 @@ class Deploy:
             "name": "DevOpsEngineer",
         }
 
-        deployer: Deployer = Deployer()
-        response = deployer.start(user_persona, expert_persona)
+        # Work in Progress
+        # deployer: Deployer = Deployer()
+        # response = deployer.start(user_persona, expert_persona)
 
 

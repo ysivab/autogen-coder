@@ -17,7 +17,7 @@ def prepare_lambda_env(language, lambdas) -> []:
     for func_name in func_names:
         # func_name = re.search(pattern, func, re.DOTALL)
         if language.lower() == "python":
-            lambda_handler_paths.append(f'''/lambda_functions/{func_name}/lambda_function.py''')
+            lambda_handler_paths.append(f'''/lambda_functions/{func_name}/index.py''')
     
     return lambda_handler_paths
 
