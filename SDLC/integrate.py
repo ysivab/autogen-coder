@@ -3,7 +3,6 @@ import os
 import importlib
 import re
 import subprocess
-import shutil
 
 from utils.seminar import Seminar
 from utils.awslambda import package_lambda, upload_lambda
@@ -22,6 +21,7 @@ class Integrate:
         common_module = importlib.import_module(f"config.{self.config_type}.common")
         self.language = getattr(common_module, 'language', "python")
         self.infra_stack = getattr(common_module, 'infra_stack', ["containers"])
+        self.asset_uri = getattr(common_module, 'asset_uri', None)
 
         # load custom configs
         config_module = importlib.import_module(f"config.{self.config_type}.integrate")
@@ -29,9 +29,10 @@ class Integrate:
         self.rules_identify_dependencies = getattr(config_module, 'rules_identify_dependencies', None)
         self.rules_identify_resources = getattr(config_module, 'rules_identify_resources', None)
 
-        self.cloud_stack_map: dict = {}
-
-        self.asset_bucket: str = "olnyth"
+        # resources to be created to support this application
+        self.infra_stack_map: dict = {} # resources to deploy
+        self.source_code_uri: dict = [] # packaged and uploaded source code
+        self.deployment_template: str = None
 
         self.config_list = autogen.config_list_from_json(
             "notebook/OAI_CONFIG_LIST",
@@ -96,10 +97,8 @@ class Integrate:
     def _install_dependencies(self, directory, file_path) -> None:
         if self.config_type.lower() == "awslambda":
             packaged_lambda = package_lambda(file_path, self.language, self.root_folder)
-            lambda_code = upload_lambda(packaged_lambda, self.asset_bucket)
-            print("23942830498290348203948290348290384209384234")
-            print(lambda_code)
-            print("23942830498290348203948290348290384209384234")
+            lambda_code_on_s3 = upload_lambda(packaged_lambda, self.asset_uri)
+            self.source_code_uri.append(lambda_code_on_s3)
         else:
             cmd = []
             for command in cmd:
@@ -116,7 +115,7 @@ class Integrate:
                     print(process.stdout)
                     print(f"Error:\n{process.stderr}")
 
-        
+
     def _identify_resource(self, resource, human_input_mode) -> None:
         user_persona: dict = {
             "name": "User",
@@ -160,7 +159,7 @@ class Integrate:
             match = re.search(pattern, message['content'], re.DOTALL)
             
             if match:
-                self.cloud_stack_map[resource] = match.group(1).strip()
+                self.infra_stack_map[resource] = match.group(1).strip()
                 break
 
 
@@ -188,11 +187,13 @@ class Integrate:
                 # if there's more than one or no dependency file, then let's get the human involved to confirm
                 if len(matches) != 1:
                     dependencies = self._identify_and_add_dependencies(source_code, "ALWAYS")
-                else:
-                    for file_name, content in matches:
-                        packages = '\n'.join(content.strip().splitlines())
-                        file_path = os.path.join(directory, file_name)
-                        self._write_code_to_disk(file_path, packages)
+                    pattern = r'```(.*?)\n(.*?)\s+```'
+                    matches = re.findall(pattern, dependencies, re.DOTALL)
+                
+                for file_name, content in matches:
+                    packages = '\n'.join(content.strip().splitlines())
+                    file_path = os.path.join(directory, file_name)
+                    self._write_code_to_disk(file_path, packages)
 
                 self._install_dependencies(directory, file_path)
 

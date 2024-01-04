@@ -138,56 +138,10 @@ class Design:
             pattern = r"<response>(?:\w+)?\s*\n(.*?)\n</response>"
             match = re.search(pattern, message['content'], re.DOTALL)
             
-            print("****** reversed seminar notes **********")
-            print(message['content'])
-
             if match:
                 project_structure = message['content']
                 break
 
-        return project_structure
-        
-        user_proxy = autogen.UserProxyAgent(
-            name = "User",
-            llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },
-            system_message = "User. Interact with the Software Developer to create project structure based on the architecture diagram. Final project break-down needs to be approved by this user.",
-            code_execution_config=False,
-            human_input_mode = human_input_mode
-        )
-
-        software_developer = autogen.AssistantAgent(
-            name = "SoftwareDeveloper",
-            llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },
-            system_message = f'''Software Developer. You are an expert Software Developer specializing in Python.
-            You will review the architecture document.
-            {self.project_structure_rules}
-            Revise the project structure based on feedback from user.
-            '''
-        )
-
-        groupchat = autogen.GroupChat(agents=[user_proxy, software_developer], messages=[], max_round=5)
-        manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
-                # "temperature": 0,
-                "config_list": self.config_list,
-            },)
-
-        user_proxy.initiate_chat(
-            manager,
-            message=f"""{self.project_structure_rules} for this project from this architecture document: <document>{self.architecture_document}</document>
-            """
-        )
-
-        for message in reversed(groupchat.messages):
-            if message['name'] == 'SoftwareDeveloper' and message['content'] is not None:
-                project_structure = project_structure + '\n' + message['content']
-                break
-        
         return project_structure
             
 
@@ -209,11 +163,8 @@ class Design:
         # if this is not serverless, then project structure is the file structure
         if self.config_type == "awslambda":
             file_paths = prepare_lambda_env(self.language, project_structure)
-            # file_paths = [f"/lambda_functions/{name.replace('Handler', '')}/lambda_function.py" for name in matches]
         else:
             file_paths = matches
-
-        # print("file_path: " + json.dumps(file_paths))
 
         # initiate source code dict
         for file_path in file_paths:

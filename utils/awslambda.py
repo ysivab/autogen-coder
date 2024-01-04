@@ -1,9 +1,11 @@
 import os
-import shutil
 import re
 import subprocess
 import zipfile
 import boto3
+import sys
+
+from botocore.exceptions import ClientError
 from datetime import datetime
 
 def prepare_lambda_env(language, lambdas) -> []:
@@ -65,7 +67,27 @@ def package_lambda(lambda_handler_path, language, root_folder) -> str:
 
 def upload_lambda(lambda_path, bucket_name) -> str:
     # Create an S3 client
-    s3 = boto3.client('s3')
+    s3 = boto3.client('s3', region_name='us-east-1')
+
+    # if bucket name is not defined, then assume bucket name to be autogen_coder_{Account_ID}
+    if bucket_name == None:
+        sts_client = boto3.client('sts')
+        caller_identity = sts_client.get_caller_identity()
+        account_id = caller_identity.get('Account')
+        bucket_name = f"autogen-coder-{account_id}"
+
+    # create the bucket if it doesn't exist
+    try:
+        s3.create_bucket(Bucket=bucket_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
+            pass
+        elif e.response['Error']['Code'] == 'BucketAlreadyExists':
+            print(f"Bucket {bucket_name} already exists and is owned by someone else")
+            sys.exit(1)
+        else:
+            print(f"An error occured: {e}")
+            sys.exit(1)
 
     # Extract filename from the file path
     filename = os.path.basename(lambda_path)
@@ -80,3 +102,5 @@ def upload_lambda(lambda_path, bucket_name) -> str:
     s3_path = f"s3://{bucket_name}/{key}"
 
     return s3_path
+
+

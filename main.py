@@ -7,7 +7,7 @@ from SDLC.plan import Plan
 from SDLC.design import Design
 from SDLC.develop import Develop
 from SDLC.integrate import Integrate
-from SDLC.sandbox import Sandbox
+from SDLC.deploy import Deploy
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', help='Configuration to use', required=True)
@@ -84,7 +84,17 @@ integrate.architecture_document = design.architecture_document
 integrate.root_folder = project_path
 # resolve all package dependencies and map out resources to be deployed
 integrate.resolve_dependency()
-# integrate.map_resources()
+integrate.map_resources()
+
+
+deploy: Deploy = Deploy(args.config)
+deploy.source_code = develop.source_code
+deploy.architecture_document = design.architecture_document
+deploy.root_folder = project_path
+deploy.infra_stack_map = integrate.infra_stack_map
+deploy.source_code_uri = integrate.source_code_uri
+deploy.deploy_to_sandbox()
+
 
 # sandbox: Sandbox = Sandbox()
 # sandbox.source_code_on_disk = integrate.source_code_on_disk

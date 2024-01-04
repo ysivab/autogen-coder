@@ -31,7 +31,6 @@ class Deployer:
 
         expert = autogen.AssistantAgent(
             name = expert_persona['name'], 
-            # description = expert_persona['description'],
             llm_config={
                 "temperature": 0,
                 "config_list": self.config_list,
@@ -42,6 +41,5 @@ class Deployer:
             expert,
             message = user_persona['task']
         )
-        # groupchat_result = groupchat.messages
 
         return "output"
