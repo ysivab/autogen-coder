@@ -11,11 +11,38 @@ AutoGen-Coder is an innovative application based on the AutoGen framework by Mic
 
 ## Installation
 
-To install AutoGen-Coder, run the following command:
+1. To install dependencies, run the following command:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+2. Create "notebook" directory
+3. Create a file OAI_CONFIG_LIST (you can add additional models as required)
+```
+[
+  {
+    "model": "gpt-3.5-turbo",
+    "api_key": "<KEY>"
+  },
+  {
+    "model": "gpt-3.5-turbo-16k",
+    "api_key": "<KEY>"
+  }
+]
+```
+3. In each SDLC/*.py file can modify 
+
+```
+self.config_list = autogen.config_list_from_json(
+    "notebook/OAI_CONFIG_LIST",
+    filter_dict={
+        "model": ["gpt-3.5-turbo-16k"]
+    },
+)
+```
+4. Setup your AWS access
+
 
 ## Usage
 
