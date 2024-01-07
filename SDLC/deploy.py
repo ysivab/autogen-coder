@@ -2,10 +2,11 @@ import autogen
 import importlib
 import os
 import re
-import subprocess
+import sys
 
 from utils.seminar import Seminar
 from utils.deployer import Deployer
+from utils.awslambda import deploy_cloudformation, describe_cloudformation
 
 class Deploy:
     def __init__(self, config_type):
@@ -15,6 +16,7 @@ class Deploy:
         self.root_folder: str = None
         self.source_code: dict = {}
         self.architecture_document: str = None
+        self.project_name: str = None
         
         # resources to be created to support this application
         self.infra_stack_map: dict = {} # resources to deploy
@@ -25,6 +27,7 @@ class Deploy:
         common_module = importlib.import_module(f"config.{self.config_type}.common")
         self.language = getattr(common_module, 'language', "python")
         self.infra_stack = getattr(common_module, 'infra_stack', ["containers"])
+        self.region = getattr(common_module, 'region', 'us-east-1')
 
         # load custom configs
         config_module = importlib.import_module(f"config.{self.config_type}.deploy")
@@ -32,6 +35,8 @@ class Deploy:
         self.devops_constraints = getattr(config_module, 'devops_constraints', None)
         self.template_constraints = getattr(config_module, 'template_constraints', None)
         self.resource_constraints = getattr(config_module, 'resource_constraints', None)
+
+        self.tshoot_counter: int = 0 # used to keep the number of times troubleshooting happened
 
         self.config_list = autogen.config_list_from_json(
             "notebook/OAI_CONFIG_LIST",
@@ -91,17 +96,14 @@ class Deploy:
     
 
 
-    def _apply_resource_constraints(self, human_input_mode) -> str:
+    def _fix_template(self, task, human_input_mode) -> str:
         user_persona: dict = {
             "name": "User",
             "description": "This agent only responds once and then never speak again.",
             "system_message": "User. Interact with the Expert to help a develop deployment template. Final project break-down needs to be approved by this user.",
             "human_input_mode": human_input_mode,
             "task": f"""
-            Review the following deployment template <template>{self.deployment_template}</template>
-            <constraints>{self.resource_constraints}</constraints>
-            Packaged source codes are saved in this URI ready for deployment if you need to refer them in your deployment template <packages>{self.source_code_uri}</packages>
-            This is the architecture document <document>{self.architecture_document}</document>
+            {task}
             Source code for your reference: <source_code>{self.source_code}</source_code>
             """
         }
@@ -133,7 +135,7 @@ class Deploy:
             matches = re.findall(pattern, message['content'], re.DOTALL)
             
             # only one code block is expected. if there's no code block OR
-            # if there are multiple code blocks, then human involve required
+            # if there are multiple code blocks, then human involvement required
             if len(matches) == 1:
                 source_code = matches[0].strip()
                 break
@@ -141,13 +143,66 @@ class Deploy:
         return source_code
 
 
+    def _troubleshoot_deployment(self, stack_message):
+        if self.tshoot_counter < 10:
+            self.deployment_template = self._fix_template(f'''
+                Review the following deployment template <template>{self.deployment_template}</template>
+                Fix the error as this template is getting the following error message at deployment: {stack_message}
+                Packaged source codes are saved in this URI ready for deployment if you need to refer them in your deployment template <packages>{self.source_code_uri}</packages>
+                This is the architecture document <document>{self.architecture_document}</document>''', "ALWAYS")
+            
+            stack = deploy_cloudformation(self.deployment_template, self.region, self.project_name)
+            if stack['status']:
+                stack_id = stack['stack_id']
+                deployment_status = describe_cloudformation(self.region, self.project_name)
+
+                if not deployment_status["status"]:
+                    self._troubleshoot_deployment(deployment_status["message"])
+            else:
+                stack_message = stack['message']
+                self.tshoot_counter = self.tshoot_counter + 1
+                self._troubleshoot_deployment(stack_message)
+        else:
+            print("Couldn't troubleshoot template deployment.")
+            sys.exit(1)
+
+
+    def _get_deployment_status(self, stack_id):
+        describe_cloudformation(self.region, self.project_name)
+
+
+    def read_deployment_template(self, template):
+        with open(template, 'r', encoding='utf-8') as file:
+            self.deployment_template = file.read()
+
 
     def deploy_to_sandbox(self):
-        self.deployment_template = self._create_deployment_template("ALWAYS")
+        if self.deployment_template is None:
+            self.deployment_template = self._create_deployment_template("NEVER")
 
-        # review and apply individual resources are properly designed
-        # for resource in self.infra_stack_map.keys():
-        self.deployment_template = self._apply_resource_constraints("NEVER")
+            # review and apply individual resources are properly designed
+            # for resource in self.infra_stack_map.keys():
+            self.deployment_template = self._fix_template(f'''
+                Review the following deployment template <template>{self.deployment_template}</template>
+                <constraints>{self.resource_constraints}</constraints>
+                Packaged source codes are saved in this URI ready for deployment if you need to refer them in your deployment template <packages>{self.source_code_uri}</packages>
+                This is the architecture document <document>{self.architecture_document}</document>''', "ALWAYS")
+
+        if self.config_type == "awslambda":
+            # deploy the template and verify stack is successfull "CREATED"
+            stack = deploy_cloudformation(self.deployment_template, self.region, self.project_name)
+            if stack['status']:
+                stack_id = stack['stack_id']
+                # self._get_deployment_status(stack_id)
+            else:
+                stack_message = stack['message']
+                # start the troubleshooting cycle
+                self._troubleshoot_deployment(stack_message)
+
+            # check the deployment status
+            deployment_status = describe_cloudformation(self.region, self.project_name)
+            if not deployment_status["status"]:
+                self._troubleshoot_deployment(deployment_status["message"])
 
         # save the deployment template to the project root
         file_path = os.path.join(self.root_folder, 'deployment-template.yml')
@@ -155,23 +210,8 @@ class Deploy:
             file.write(self.deployment_template)
 
 
-        # deploy the application
-        user_persona: dict = {
-            "name": "User",
-            "human_input_mode": "NEVER",
-            "task": f"""
-            Deployment file is created and saved under {file_path}. The content of the template file is as follows for your reference only <file>{self.deployment_template}</file>.
-            All necessary access keys are already uploaded to the enviornment variable. Deploy this template file to the platform. 
-            *** IMPORTANT ***
-            Do not give me text instructions. Write me a bash / shell script to run. I'll return back with the results. Always give me shell / bash commands, and never text instructions.
-            """
-        }
-
-        expert_persona: dict = {
-            "name": "DevOpsEngineer",
-        }
-
-        # Work in Progress
+       
+        # # Work in Progress
         # deployer: Deployer = Deployer()
         # response = deployer.start(user_persona, expert_persona)
 

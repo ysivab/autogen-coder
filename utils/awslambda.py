@@ -3,6 +3,7 @@ import re
 import subprocess
 import zipfile
 import boto3
+import time
 import sys
 
 from botocore.exceptions import ClientError
@@ -103,4 +104,103 @@ def upload_lambda(lambda_path, bucket_name) -> str:
 
     return s3_path
 
+
+def deploy_cloudformation(template, region, stack_name) -> {}:
+    deployment_result: dict = {
+        "status": False
+    }
+
+    # Create CloudFormation client
+    cf = boto3.client('cloudformation', region_name=region)
+
+    try:
+        # Try to create the stack
+        response = cf.create_stack(
+            StackName=stack_name,
+            TemplateBody=template,
+            Capabilities=['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
+            # OnFailure='DELETE'  # Specify what action to take if stack creation fails
+        )
+        deployment_result["status"] = True
+        deployment_result["stack_id"] = response['StackId']
+
+        return deployment_result
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'AlreadyExistsException':
+            print(f"Stack {stack_name} already exists, attempting to update...")
+            try:
+                # Update the stack
+                response = cf.update_stack(
+                    StackName=stack_name,
+                    TemplateBody=template,
+                    Capabilities=['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM']
+                )
+                deployment_result["status"] = True
+                deployment_result["stack_id"] = response['StackId']
+
+                return deployment_result
+            except ClientError as update_error:
+                deployment_result["status"] = False
+                deployment_result["message"] = update_error
+                return deployment_result
+        else:
+            deployment_result["status"] = False
+            deployment_result["message"] = update_error
+            return deployment_result
+
+
+def describe_cloudformation(region, stack_name) -> {}:
+    deployment_status = {
+        "status": True, # assume deployment is successful
+        "message": []
+    }
+    # Initialize a CloudFormation client
+    cf = boto3.client('cloudformation', region_name=region)
+
+    try:
+        # wait until cloud formation template deployment is completed
+        while True:
+            # Retrieve the stack's current status
+            stack = cf.describe_stacks(StackName=stack_name)['Stacks'][0]
+            stack_status = stack['StackStatus']
+
+            # Check if the stack is still being created or updated
+            if stack_status.endswith('IN_PROGRESS'):
+                print(f"Stack status is '{stack_status}'. Waiting...")
+                time.sleep(10)  # Wait for 10 seconds before checking again
+                continue
+
+            # If the stack is no longer in progress, break out of the loop
+            print(f"Stack status is '{stack_status}'.")
+            break
+
+        # Retrieve and print the stack events
+        response = cf.describe_stack_events(StackName=stack_name)
+        events = response['StackEvents']
+
+        for event in events:
+            event_id = event['EventId']
+            status = event['ResourceStatus']
+            reason = event.get('ResourceStatusReason', 'No reason provided')
+            timestamp = event['Timestamp']
+            deployment_status["message"].append({
+                "Event_ID": {event_id},
+                "Status": {status},
+                "Reason": {reason},
+                "Timestamp": {timestamp}
+            })
+            print(f"Event ID: {event_id}, Status: {status}, Reason: {reason}, Timestamp: {timestamp}")
+
+            # Print any error messages
+            if 'FAILED' in status or 'ROLLBACK' in status:
+                deployment_status["status"] = False
+                print(f"Error: {status} - {reason}")
+    
+    except ClientError as e:
+        deployment_status = {
+            "status": False, # assume deployment is successful
+            "message": []
+        }
+    
+    return deployment_status
 
