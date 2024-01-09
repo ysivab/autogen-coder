@@ -43,6 +43,9 @@ self.config_list = autogen.config_list_from_json(
 ```
 4. Setup your AWS access
 
+5. Run the python script to start the model.
+
+6. Enter `exit` to continue when the model prompts for feedback.
 
 ## Usage
 
@@ -53,11 +56,11 @@ AutoGen-Coder is operated through a series of commands, corresponding to differe
    - Involves Chief Technology Officer and Software Architect for the Design phase.
    
    ```bash
-   main.py --config awslambda --project-root /path/to/dir --project-name name --task "develop a simple HelloWorld API"
+   main.py --config awslambda --workspace /path/to/dir --project-name name --task "develop a simple HelloWorld API"
    ```
 
    ```bash
-   main.py --config awslambda --project-root /path/to/dir --project-name name --requirement-doc /path/to/word.docx
+   main.py --config awslambda --workspace /path/to/dir --project-name name --requirement-doc /path/to/word.docx
    ```
 
 2. **Direct Architecture Implementation**:
@@ -65,6 +68,6 @@ AutoGen-Coder is operated through a series of commands, corresponding to differe
    - Skips the Plan and Design stages.
 
    ```bash
-   main.py --config awslambda --project-root /path/to/dir --project-name name --architecture-doc /path/to/architecture.md
+   main.py --config awslambda --workspace /path/to/dir --project-name name --architecture-doc /path/to/architecture.md
    ```
 
