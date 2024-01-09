@@ -11,13 +11,16 @@ class Seminar:
             },
         )
 
-    def start(self, user_persona: dict, expert_persona: dict, critic_persona: dict) -> str:
+    def start(self, user_persona: dict, expert_persona: dict, critic_persona: dict, config=None) -> str:
+        if config is None:
+            config = self.config_list
+
         user_proxy = autogen.UserProxyAgent(
             name = user_persona['name'],
             description = user_persona['description'],
             llm_config={
                 # "temperature": 0,
-                "config_list": self.config_list,
+                "config_list": config,
             },
             system_message = user_persona['system_message'],
             code_execution_config=False,
@@ -30,7 +33,7 @@ class Seminar:
             description = critic_persona['description'],
             llm_config={
                 # "temperature": 0,
-                "config_list": self.config_list,
+                "config_list": config,
             },
             system_message = critic_persona['system_message']
         )
@@ -40,7 +43,7 @@ class Seminar:
             description = expert_persona['description'],
             llm_config={
                 # "temperature": 0,
-                "config_list": self.config_list,
+                "config_list": config,
             },
             system_message = expert_persona['system_message']
         )
@@ -48,7 +51,7 @@ class Seminar:
         groupchat = autogen.GroupChat(agents=[user_proxy, expert, critic], messages=[], max_round=10, allow_repeat_speaker=False)
         manager = autogen.GroupChatManager(groupchat=groupchat, llm_config={
                 # "temperature": 0,
-                "config_list": self.config_list,
+                "config_list": config,
             },)
 
         user_proxy.initiate_chat(

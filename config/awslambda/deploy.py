@@ -1,7 +1,7 @@
 template_constraints = '''
     You must follow all of these rules:
-    Rule #0: Never tell me to modify or replace any value. Do it yourself and give a command that's executable.
-    Rule #1: Deploy resource using AWS CLI in ca-central-1 region
+    Rule #0: Never tell me to modify or replace any value.
+    Rule #1: Deploy resource using AWS CLI in us-east-1 region
     Rule #2: You must randomize the resource name to avoid conflicts
     Rule #3: You must identify the lambda code URI and add the link in your CloudFormation. Do not put placeholder or instructions.
     Rule #4: You must only send one codeblock with CloudFormation template. No other codeblock should be there.
@@ -11,16 +11,16 @@ resource_constraints_task = '''
     Review the CloudFormation template one resource at a time against the constraints given to you in <constraints></constraints>. Constraints has an entire list. Only look at the constraint applicable to the resource you are reviewing, then analyze the template to ensure all rules are followed. Then repeat this for every resource in the CloudFormation template. Do not add any new resources to the CloudFormation template, just fix the one that's already given to you. 
 '''
 
+template_critic_constraints = '''
+    You must follow all these rules:
+    Rule #1: Always write the entire code and return with your response. Not just the suggestion.
+    Rule #2: Check if there's any placeholder text or sample values. If there are any sample values, ask the agent to check previous data to get the exact values.
+    Rule #3: You must ensure all resource names are randomized with a random character at the end.
+    Rule #4: You must check and verify all API Gateways are connected to the Lambdas for traffic
+    Rule #5: You must ensure IAM roles and resource policies are properly aligned to the requirement
+'''
+
 resource_constraints = {
-    "AWS-API-Gateway": '''
-        *** IMPORTANT ***
-        You must follow all of these rules:
-        Rule #0: First analyze the given CloudFormation template. If it doesn't have any API Gateway, then DO NOT ADD any API gateway.
-        Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
-        Rule #2: You must randomize the resource name to avoid conflicts
-        Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
-        Rule #4: Never forget to connect the API Gateway to the Lambdas to send the traffic.
-    ''',
     "Lambda": '''
         Each Lambda function code and all dependent libraries are in these folder {json.dumps(self.cloud_stack_map)}
         *** IMPORTANT ***
@@ -36,7 +36,7 @@ resource_constraints = {
     "S3-bucket": '''
         *** IMPORTANT ***
         You must follow all of these rules:
-        Rule #0: First analyze the given CloudFormation template. If it doesn't have any S3 Bucket,DO NOT ADD ANY new S3 bucket.
+        Rule #0: First analyze the architecture document. If it doesn't have any S3 Bucket,DO NOT ADD ANY new S3 bucket.
         Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
         Rule #2: You must randomize the resource name to avoid conflicts
         Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
@@ -44,7 +44,7 @@ resource_constraints = {
     "DynamoDB": '''
         *** IMPORTANT ***
         You must follow all of these rules:
-        Rule #0: First analyze the given CloudFormation template. If it doesn't have any DynamoDB,DO NOT ADD ANY new DynamoDB.
+        Rule #0: First analyze the architecture document. If it doesn't have any DynamoDB,DO NOT ADD ANY new DynamoDB.
         Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
         Rule #2: You must randomize the resource name to avoid conflicts
         Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
@@ -53,7 +53,7 @@ resource_constraints = {
     "SSM": '''
         *** IMPORTANT ***
         You must follow all of these rules:
-        Rule #0: First analyze the given CloudFormation template. If it doesn't have any SSM,DO NOT ADD ANY new SSM.
+        Rule #0: First analyze the architecture document. If it doesn't have any SSM,DO NOT ADD ANY new SSM.
         Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
         Rule #2: You must randomize the resource name to avoid conflicts
         Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
@@ -73,16 +73,25 @@ resource_constraints = {
     "SecurityGroup": '''
         *** IMPORTANT ***
         You must follow all of these rules:
-        Rule #0: First analyze the given CloudFormation template. If it doesn't have any Security Group,DO NOT ADD ANY new Security Group.
+        Rule #0: First analyze the architecture document. If it doesn't have any Security Group,DO NOT ADD ANY new Security Group.
         Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
         Rule #2: You must randomize the resource name to avoid conflicts
         Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
         Rule #4: Review the entire template to ensure it's properly reflecting the actual Security Rules required. Don't add any additional unnecessary rules.
     ''',
+    "AWS-API-Gateway": '''
+        *** IMPORTANT ***
+        You must follow all of these rules:
+        Rule #0: First analyze the architecture document. If it doesn't have any API Gateway, then DO NOT ADD any API gateway.
+        Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
+        Rule #2: You must randomize the resource name to avoid conflicts
+        Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component
+        Rule #4: Never forget to connect the API Gateway to the Lambdas to send the traffic.
+    ''',
     "CloudWatch": '''
         *** IMPORTANT ***
         You must follow all of these rules:
-        Rule #0: First analyze the given CloudFormation template. If it doesn't have any CloudWatch,DO NOT ADD ANY new CloudWath.
+        Rule #0: First analyze the architecture document. If it doesn't have any CloudWatch,DO NOT ADD ANY new CloudWath.
         Rule #1: There should be absolutely no placeholder values or texts. All values must be valid and ready for deployment
         Rule #2: You must randomize the resource name to avoid conflicts
         Rule #3: You must always respond with the entire CloudFormation template. Not just the fixed code for this specific component

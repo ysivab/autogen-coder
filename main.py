@@ -1,17 +1,11 @@
 import argparse
 import os
 
-from utils.envprep import EnvPrep
-
-from SDLC.plan import Plan
-from SDLC.design import Design
-from SDLC.develop import Develop
-from SDLC.integrate import Integrate
-from SDLC.deploy import Deploy
+from workflow import run_deploy, run_workflow
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', help='Configuration to use', required=True)
-parser.add_argument('--project-root', help='Output of code and other files', required=False)
+parser.add_argument('--workspace', help='Workspace directory for code and other files', required=False)
 parser.add_argument('--requirement-doc', help='Requirement document in word', required=False)
 parser.add_argument('--architecture-doc', help='Technical architecture document in .MD file', required=False)
 parser.add_argument('--task', help='Implementation request', required=False)
@@ -23,10 +17,7 @@ args = parser.parse_args()
 
 if args.deploy_only:
     if os.path.exists(args.deploy_only):
-        deploy: Deploy = Deploy(args.config)
-        deploy.project_name = args.project_name
-        deploy.read_deployment_template(args.deploy_only)
-        deploy.deploy_to_sandbox()
+        run_deploy(args)
     else:
         parser.error(f"--deploy-only template doesn't exist in this pasth {args.deploy_only}")
 else:
@@ -46,67 +37,6 @@ else:
     if args.architecture_doc and not os.path.exists(args.architecture_doc):
         parser.error(f"--requirement-doc doesn't exist in this path {args.architecture_doc}")
 
-
-    # prepare environment
-    env_prep = EnvPrep()
-    project_path = env_prep.initiate(args.project_name, args.project_root)
-
-    plan = Plan(args.config)
-    design: Design = Design(args.config)
-
-    # if architecture document is presented, Planning and Design stages can be skipped
-    if not args.architecture_doc:
-        # Set requirements or task for the plan
-        if args.requirement_doc:
-            plan.read_requirements(args.requirement_doc)
-        else:
-            plan.set_task(args.task)
-
-        # Proceed with plan analysis
-        plan.analyze_and_plan()
-
-        # initiate and complete the architecture document
-        design.root_folder = project_path
-        # design a suitable technical architecture
-        design.architect_solution(plan.product_plan)
-    else:
-        # load architecture doc from file
-        design.read_architecture_doc(args.architecture_doc)
-        # create the project structure
-        design.create_project_structure()
-
-
-    develop: Develop = Develop(args.config)
-    # pass the data from previous stages
-    develop.source_code = design.source_code
-    develop.root_folder = project_path
-    develop.project_structure = design.project_structure
-    develop.architecture_document = design.architecture_document
-    #write and save code to local diskc
-    develop.write_code()
-    develop.save_code()
-
-
-    # Integrate stage
-    integrate: Integrate = Integrate(args.config)
-    # pass the data from previous stages
-    integrate.source_code = develop.source_code
-    integrate.architecture_document = design.architecture_document
-    integrate.root_folder = project_path
-    # resolve all package dependencies and map out resources to be deployed
-    integrate.resolve_dependency()
-    integrate.map_resources()
-
-
-    deploy: Deploy = Deploy(args.config)
-    deploy.project_name = args.project_name
-    deploy.source_code = develop.source_code
-    deploy.architecture_document = design.architecture_document
-    deploy.root_folder = project_path
-    deploy.infra_stack_map = integrate.infra_stack_map
-    deploy.source_code_uri = integrate.source_code_uri
-    deploy.deploy_to_sandbox()
-
-
+    run_workflow(args)
 
 

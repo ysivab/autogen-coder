@@ -1,6 +1,7 @@
-import argparse
 import os
 import shutil
+
+# from gitops import git_init
 
 class EnvPrep:
     def __init__(self):
@@ -16,6 +17,7 @@ class EnvPrep:
             else:
                 print("Please respond with 'yes' or 'no' (or 'y' or 'n').")
 
+
     def initiate(self, project_name, project_root) -> str:
         project_root_path = os.path.abspath(project_root)
         project_path = os.path.join(project_root_path, project_name)
@@ -23,7 +25,7 @@ class EnvPrep:
         # Check if project_root starts with "/"
         if not project_root.startswith("/"):
             current_directory = os.getcwd()
-            print(f"The project will be created under the current directory: {current_directory}")
+            print(f"The project will be created under the current workspace: {current_directory}")
             if not self.confirm_action("Do you want to proceed? (yes/no): "):
                 exit()
 

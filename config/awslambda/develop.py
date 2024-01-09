@@ -10,3 +10,10 @@ developer_constraints = '''
     Rule #9: Python Lambda handler must be 'index.lambda_handler'.
 '''
 
+critic_constraints = '''
+    You must follow all these rules:
+    Rule #1: Check the code and make sure all dependencies are delcared on the top
+    Rule #2: Ensure Lambda handler is properly defined as 'index.lambda_handler'
+'''
+
+

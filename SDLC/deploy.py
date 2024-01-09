@@ -35,6 +35,7 @@ class Deploy:
         self.devops_constraints = getattr(config_module, 'devops_constraints', None)
         self.template_constraints = getattr(config_module, 'template_constraints', None)
         self.resource_constraints = getattr(config_module, 'resource_constraints', None)
+        self.template_critic_constraints = getattr(config_module, 'template_critic_constraints', None)
 
         self.tshoot_counter: int = 0 # used to keep the number of times troubleshooting happened
 
@@ -47,6 +48,14 @@ class Deploy:
 
 
     def _create_deployment_template(self, human_input_mode) -> str:
+        # GPT-4 is better for CloudFormation template creation
+        config_list = autogen.config_list_from_json(
+            "notebook/OAI_CONFIG_LIST",
+            filter_dict={
+                "model": ["gpt-3.5-turbo-16k"]
+            },
+        )
+
         user_persona: dict = {
             "name": "User",
             "description": "This agent only responds once and then never speak again.",
@@ -72,13 +81,12 @@ class Deploy:
             "name": "Critic",
             "description": "This agent only speaks once, and only after Expert to critique the work",
             "system_message": f'''Critic. Double check plan, and code from other agents and provide feedback. DevOps Engineer must return the output in just one code block.
-            You must follow one rule: Always write the entire code and return with your response. Not just the suggestion.
-            {self.template_constraints}
+            {self.template_critic_constraints}
             '''
         }
 
         seminar: Seminar = Seminar()
-        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona)
+        seminar_notes = seminar.start(user_persona, critic_persona, expert_persona, config_list)
 
         # find the last code block and send it as the source code
         source_code: str = None
@@ -182,11 +190,11 @@ class Deploy:
 
             # review and apply individual resources are properly designed
             # for resource in self.infra_stack_map.keys():
-            self.deployment_template = self._fix_template(f'''
-                Review the following deployment template <template>{self.deployment_template}</template>
-                <constraints>{self.resource_constraints}</constraints>
-                Packaged source codes are saved in this URI ready for deployment if you need to refer them in your deployment template <packages>{self.source_code_uri}</packages>
-                This is the architecture document <document>{self.architecture_document}</document>''', "ALWAYS")
+            # self.deployment_template = self._fix_template(f'''
+            #     Review the following deployment template <template>{self.deployment_template}</template>
+            #     <constraints>{self.resource_constraints}</constraints>
+            #     Packaged source codes are saved in this URI ready for deployment if you need to refer them in your deployment template <packages>{self.source_code_uri}</packages>
+            #     This is the architecture document <document>{self.architecture_document}</document>''', "ALWAYS")
 
         if self.config_type == "awslambda":
             # deploy the template and verify stack is successfull "CREATED"

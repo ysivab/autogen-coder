@@ -23,7 +23,6 @@ def prepare_lambda_env(language, lambdas) -> []:
     return lambda_handler_paths
 
 
-
 def package_lambda(lambda_handler_path, language, root_folder) -> str:
     lambda_dir = os.path.dirname(lambda_handler_path)
 
@@ -144,15 +143,17 @@ def deploy_cloudformation(template, region, stack_name) -> {}:
                 deployment_result["message"] = update_error
                 return deployment_result
         else:
+            print(e)
             deployment_result["status"] = False
-            deployment_result["message"] = update_error
+            deployment_result["message"] = e
             return deployment_result
 
 
 def describe_cloudformation(region, stack_name) -> {}:
     deployment_status = {
         "status": True, # assume deployment is successful
-        "message": []
+        "message": [],
+        "status_message": None
     }
     # Initialize a CloudFormation client
     cf = boto3.client('cloudformation', region_name=region)
@@ -163,6 +164,7 @@ def describe_cloudformation(region, stack_name) -> {}:
             # Retrieve the stack's current status
             stack = cf.describe_stacks(StackName=stack_name)['Stacks'][0]
             stack_status = stack['StackStatus']
+            deployment_status["status_message"] = stack['StackStatus']
 
             # Check if the stack is still being created or updated
             if stack_status.endswith('IN_PROGRESS'):
@@ -202,5 +204,15 @@ def describe_cloudformation(region, stack_name) -> {}:
             "message": []
         }
     
+    # if the stack failed, then let's clean it up
+    if not deployment_status["status"] and deployment_status["status_message"] == "ROLLBACK_COMPLETE":
+        cf.delete_stack(StackName=stack_name)
+        print(f"Deletion request sent for stack '{stack_name}'")
+
+        print("Waiting for stack to be deleted ....")
+        waiter = cf.get_waiter('stack_delete_complete')
+        waiter.wait(StackName=stack_name)
+        print(f"Stack '{stack_name}' has been deleted.")
+
     return deployment_status
 

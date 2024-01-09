@@ -15,6 +15,7 @@ class Develop:
         # load custom configs
         config_module = importlib.import_module(f"config.{self.config_type}.develop")
         self.developer_constraints = getattr(config_module, 'developer_constraints', None)
+        self.critic_constraints = getattr(config_module, 'critic_constraints', None)
 
         self.root_folder: str = None
         self.source_code: dict = {}
@@ -73,8 +74,11 @@ class Develop:
         critic_persona: dict = {
             "name": "Critic",
             "description": "This agent only speaks once, and only after Software Developer to critique the work",
-            "system_message": '''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.
-            You must follow one rule: Always write the entire code and return with your response. Not just the suggestion.''',
+            "system_message": f'''Critic. Double check plan, claims, code from other agents and provide feedback. Softwar Developer must return the output in just one code block.
+            You must follow one rule: Always write the entire code and return with your response. Not just the suggestion.
+            {self.critic_constraints}
+            ''',
+            
         }
 
         seminar: Seminar = Seminar()
